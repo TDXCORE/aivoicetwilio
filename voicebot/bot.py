@@ -1,6 +1,6 @@
 """
 bot.py – Pipecat + Twilio + FastAPI
-2025-06-21 - FINAL VERSION WITH COMPLETE DEBUGGING
+2025-06-21 - FIXED VERSION - Event Handlers Before Transport
 """
 
 # ───────────────────────────── Logger global ──────────────────────────────
@@ -122,20 +122,7 @@ async def main(ws: WebSocket) -> None:
             auth_token=os.getenv("TWILIO_AUTH_TOKEN", ""),
         )
 
-        # Crear transport
-        logger.debug("🔧 Creating FastAPI WebSocket transport...")
-        transport = FastAPIWebsocketTransport(
-            websocket=ws,
-            params=FastAPIWebsocketParams(
-                audio_in_enabled=True,
-                audio_out_enabled=True,
-                add_wav_header=False,
-                vad_analyzer=SileroVADAnalyzer(),
-                serializer=serializer,
-            ),
-        )
-
-        # ───── Servicios STT / LLM / TTS ─────
+        # ───── Servicios STT / LLM / TTS (CREAR ANTES DEL TRANSPORT) ─────
         logger.debug("🔧 Creating STT service...")
         stt = DeepgramSTTService(
             api_key=os.getenv("DEEPGRAM_API_KEY"),
@@ -165,9 +152,8 @@ async def main(ws: WebSocket) -> None:
                     "Eres **Lorenzo**, SDR de TDX. Hablas siempre en español colombiano:\n"
                     "1. Responde de forma natural y conversacional.\n"
                     "2. Mantén respuestas cortas (máximo 2-3 oraciones).\n"
-                    "3. Sigue el guion Cool Call paso a paso.\n"
-                    "4. Permite interrupciones naturales.\n"
-                    "5. Sé amigable y profesional."
+                    "3. Sé amigable y profesional.\n"
+                    "4. Permite interrupciones naturales."
                 ),
             }
         ]
@@ -177,16 +163,20 @@ async def main(ws: WebSocket) -> None:
         # ───── VARIABLE PARA TASK (la necesitamos en los event handlers) ─────
         task = None
 
-        # ───── REGISTRAR EVENTOS DE TRANSPORT ─────
-        logger.debug("🔧 Registering transport event handlers...")
-
-        @transport.event_handler("on_client_connected")
+        # ───── FUNCIONES DE EVENT HANDLERS (DEFINIR ANTES DE USARLAS) ─────
         async def on_client_connected(transport, client):
             logger.info(f"👤 Client connected: {client}")
             call_state["participant_count"] += 1
             logger.info(f"👥 Total participants: {call_state['participant_count']}")
+            
+            # SALUDO INMEDIATO cuando se conecta el primer cliente
+            if not call_state["greeted"] and task:
+                logger.info("👋 Sending immediate greeting...")
+                await asyncio.sleep(0.5)  # Pequeño delay
+                await task.queue_text("¡Hola! Soy Lorenzo de TDX, ¿cómo estás?")
+                call_state["greeted"] = True
+                logger.info("✅ Greeting sent")
 
-        @transport.event_handler("on_client_disconnected")
         async def on_client_disconnected(transport, client):
             logger.info(f"👤 Client disconnected: {client}")
             call_state["participant_count"] -= 1
@@ -195,82 +185,44 @@ async def main(ws: WebSocket) -> None:
                 logger.info("🛑 Cancelling task due to client disconnect")
                 await task.cancel()
 
-        @transport.event_handler("on_first_participant_joined")
-        async def on_first_participant_joined(transport, participant):
-            logger.info(f"🎯 First participant joined: {participant}")
-            if not call_state["greeted"] and task:
-                logger.info("👋 Sending initial greeting...")
-                await asyncio.sleep(1.0)  # Dar tiempo para estabilizar
-                await task.queue_text("¡Hola! Soy Lorenzo de TDX, ¿cómo estás?")
-                call_state["greeted"] = True
-                logger.info("✅ Initial greeting sent")
+        async def on_user_started_speaking(transport, event):
+            logger.info("🎤 User started speaking")
 
-        @transport.event_handler("on_participant_joined")
-        async def on_participant_joined(transport, participant):
-            logger.info(f"👤 Participant joined: {participant}")
+        async def on_user_stopped_speaking(transport, event):
+            logger.info("🔇 User stopped speaking")
 
-        @transport.event_handler("on_participant_left")
-        async def on_participant_left(transport, participant):
-            logger.info(f"👤 Participant left: {participant}")
-
-        # Eventos de habla con manejo de errores
-        try:
-            @transport.event_handler("on_user_started_speaking")
-            async def on_user_started_speaking(transport, event):
-                logger.info("🎤 User started speaking")
-
-            @transport.event_handler("on_user_stopped_speaking")
-            async def on_user_stopped_speaking(transport, event):
-                logger.info("🔇 User stopped speaking")
-        except Exception as e:
-            logger.warning(f"⚠️ Could not register speaking event handlers: {e}")
-
-        # Frame-level debugging
-        @transport.event_handler("on_frame")
         async def on_frame(transport, frame):
             if isinstance(frame, AudioRawFrame):
                 call_state["audio_frames_received"] += 1
-                if call_state["audio_frames_received"] % 100 == 0:  # Log every 100 frames
+                if call_state["audio_frames_received"] % 100 == 0:
                     logger.debug(f"🎵 Audio frames received: {call_state['audio_frames_received']}")
+            elif isinstance(frame, TextFrame):
+                logger.info(f"📝 Text frame: {frame.text}")
             else:
                 logger.debug(f"📦 Frame received: {type(frame).__name__}")
 
-        # ───── REGISTRAR EVENTOS DE STT ─────
-        logger.debug("🔧 Registering STT event handlers...")
-        # Nota: Algunos event handlers pueden no estar disponibles en todas las versiones
-        try:
-            @stt.event_handler("on_transcript_received")
-            async def on_transcript_received(stt_service, transcript):
-                call_state["transcripts_received"] += 1
-                logger.info(f"📝 STT Transcript #{call_state['transcripts_received']}: '{transcript}'")
-        except Exception as e:
-            logger.warning(f"⚠️ Could not register STT event handler: {e}")
+        # ───── CREAR TRANSPORT CON VAD ─────
+        logger.debug("🔧 Creating FastAPI WebSocket transport...")
+        transport = FastAPIWebsocketTransport(
+            websocket=ws,
+            params=FastAPIWebsocketParams(
+                audio_in_enabled=True,
+                audio_out_enabled=True,
+                add_wav_header=False,
+                vad_analyzer=SileroVADAnalyzer(
+                    params={"threshold": 0.5}  # Más sensible
+                ),
+                serializer=serializer,
+            ),
+        )
 
-        # ───── REGISTRAR EVENTOS DE LLM ─────
-        logger.debug("🔧 Registering LLM event handlers...")
-        # Nota: Algunos event handlers pueden no estar disponibles en todas las versiones
-        try:
-            @llm.event_handler("on_llm_response_received")
-            async def on_llm_response_received(llm_service, response):
-                call_state["llm_responses_sent"] += 1
-                logger.info(f"🧠 LLM Response #{call_state['llm_responses_sent']}: '{response}'")
-        except Exception as e:
-            logger.warning(f"⚠️ Could not register LLM event handler: {e}")
-
-        # ───── REGISTRAR EVENTOS DE TTS ─────
-        logger.debug("🔧 Registering TTS event handlers...")
-        # Nota: Algunos event handlers pueden no estar disponibles en todas las versiones
-        try:
-            @tts.event_handler("on_tts_started")
-            async def on_tts_started(tts_service, text):
-                logger.info(f"🔊 TTS Started: '{text}'")
-
-            @tts.event_handler("on_tts_stopped")
-            async def on_tts_stopped(tts_service, text):
-                call_state["tts_responses_sent"] += 1
-                logger.info(f"🔊 TTS Stopped #{call_state['tts_responses_sent']}: '{text}'")
-        except Exception as e:
-            logger.warning(f"⚠️ Could not register TTS event handler: {e}")
+        # ───── REGISTRAR EVENT HANDLERS INMEDIATAMENTE ─────
+        logger.debug("🔧 Registering transport event handlers...")
+        transport.add_event_handler("on_client_connected", on_client_connected)
+        transport.add_event_handler("on_client_disconnected", on_client_disconnected) 
+        transport.add_event_handler("on_user_started_speaking", on_user_started_speaking)
+        transport.add_event_handler("on_user_stopped_speaking", on_user_stopped_speaking)
+        transport.add_event_handler("on_frame", on_frame)
 
         # ───── CREAR PIPELINE ─────
         logger.debug("🔧 Creating pipeline...")
