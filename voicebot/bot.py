@@ -54,11 +54,6 @@ from pipecat.frames.frames import (
     AudioRawFrame,
     TextFrame,
     TranscriptionFrame,
-    TTSStartedFrame,
-    TTSStoppedFrame,
-    LLMMessagesFrame,
-    LLMResponseStartFrame,
-    LLMResponseEndFrame,
 )
 
 from pipecatcloud.agent import WebSocketSessionArguments
@@ -218,21 +213,17 @@ async def main(ws: WebSocket) -> None:
         async def on_participant_left(transport, participant):
             logger.info(f"👤 Participant left: {participant}")
 
-        @transport.event_handler("on_user_started_speaking")
-        async def on_user_started_speaking(transport, event):
-            logger.info("🎤 User started speaking")
+        # Eventos de habla con manejo de errores
+        try:
+            @transport.event_handler("on_user_started_speaking")
+            async def on_user_started_speaking(transport, event):
+                logger.info("🎤 User started speaking")
 
-        @transport.event_handler("on_user_stopped_speaking")
-        async def on_user_stopped_speaking(transport, event):
-            logger.info("🔇 User stopped speaking")
-
-        @transport.event_handler("on_bot_started_speaking")
-        async def on_bot_started_speaking(transport, event):
-            logger.info("🤖 Bot started speaking")
-
-        @transport.event_handler("on_bot_stopped_speaking")
-        async def on_bot_stopped_speaking(transport, event):
-            logger.info("🤖 Bot stopped speaking")
+            @transport.event_handler("on_user_stopped_speaking")
+            async def on_user_stopped_speaking(transport, event):
+                logger.info("🔇 User stopped speaking")
+        except Exception as e:
+            logger.warning(f"⚠️ Could not register speaking event handlers: {e}")
 
         # Frame-level debugging
         @transport.event_handler("on_frame")
@@ -246,43 +237,40 @@ async def main(ws: WebSocket) -> None:
 
         # ───── REGISTRAR EVENTOS DE STT ─────
         logger.debug("🔧 Registering STT event handlers...")
-
-        @stt.event_handler("on_transcript_received")
-        async def on_transcript_received(stt_service, transcript):
-            call_state["transcripts_received"] += 1
-            logger.info(f"📝 STT Transcript #{call_state['transcripts_received']}: '{transcript}'")
-
-        @stt.event_handler("on_interim_transcript")
-        async def on_interim_transcript(stt_service, transcript):
-            logger.debug(f"📝 STT Interim: '{transcript}'")
+        # Nota: Algunos event handlers pueden no estar disponibles en todas las versiones
+        try:
+            @stt.event_handler("on_transcript_received")
+            async def on_transcript_received(stt_service, transcript):
+                call_state["transcripts_received"] += 1
+                logger.info(f"📝 STT Transcript #{call_state['transcripts_received']}: '{transcript}'")
+        except Exception as e:
+            logger.warning(f"⚠️ Could not register STT event handler: {e}")
 
         # ───── REGISTRAR EVENTOS DE LLM ─────
         logger.debug("🔧 Registering LLM event handlers...")
-
-        @llm.event_handler("on_llm_response_received")
-        async def on_llm_response_received(llm_service, response):
-            call_state["llm_responses_sent"] += 1
-            logger.info(f"🧠 LLM Response #{call_state['llm_responses_sent']}: '{response}'")
-
-        @llm.event_handler("on_llm_response_start")
-        async def on_llm_response_start(llm_service, response):
-            logger.debug("🧠 LLM started generating response")
-
-        @llm.event_handler("on_llm_response_end")
-        async def on_llm_response_end(llm_service, response):
-            logger.debug("🧠 LLM finished generating response")
+        # Nota: Algunos event handlers pueden no estar disponibles en todas las versiones
+        try:
+            @llm.event_handler("on_llm_response_received")
+            async def on_llm_response_received(llm_service, response):
+                call_state["llm_responses_sent"] += 1
+                logger.info(f"🧠 LLM Response #{call_state['llm_responses_sent']}: '{response}'")
+        except Exception as e:
+            logger.warning(f"⚠️ Could not register LLM event handler: {e}")
 
         # ───── REGISTRAR EVENTOS DE TTS ─────
         logger.debug("🔧 Registering TTS event handlers...")
+        # Nota: Algunos event handlers pueden no estar disponibles en todas las versiones
+        try:
+            @tts.event_handler("on_tts_started")
+            async def on_tts_started(tts_service, text):
+                logger.info(f"🔊 TTS Started: '{text}'")
 
-        @tts.event_handler("on_tts_started")
-        async def on_tts_started(tts_service, text):
-            logger.info(f"🔊 TTS Started: '{text}'")
-
-        @tts.event_handler("on_tts_stopped")
-        async def on_tts_stopped(tts_service, text):
-            call_state["tts_responses_sent"] += 1
-            logger.info(f"🔊 TTS Stopped #{call_state['tts_responses_sent']}: '{text}'")
+            @tts.event_handler("on_tts_stopped")
+            async def on_tts_stopped(tts_service, text):
+                call_state["tts_responses_sent"] += 1
+                logger.info(f"🔊 TTS Stopped #{call_state['tts_responses_sent']}: '{text}'")
+        except Exception as e:
+            logger.warning(f"⚠️ Could not register TTS event handler: {e}")
 
         # ───── CREAR PIPELINE ─────
         logger.debug("🔧 Creating pipeline...")
