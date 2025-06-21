@@ -209,9 +209,7 @@ async def main(ws: WebSocket) -> None:
                 audio_in_enabled=True,
                 audio_out_enabled=True,
                 add_wav_header=False,
-                vad_analyzer=SileroVADAnalyzer(
-                    params={"threshold": 0.5}  # Más sensible
-                ),
+                vad_analyzer=SileroVADAnalyzer(),  # Sin parámetros personalizados
                 serializer=serializer,
             ),
         )
