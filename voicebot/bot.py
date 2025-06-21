@@ -89,7 +89,9 @@ async def main(ws: WebSocket) -> None:
     # ───── Servicios STT / LLM / TTS ─────
     stt = DeepgramSTTService(
         api_key=os.getenv("DEEPGRAM_API_KEY"),
-        language="es"                     # STT en español
+        language="es",
+        sample_rate=8000,        # Twilio media stream es 8 kHz PCM
+        audio_passthrough=True,  # ← ¡crucial!
     )
     llm = OpenAILLMService(api_key=os.getenv("OPENAI_API_KEY"), model="gpt-4o-mini")
     tts = CartesiaTTSService(
@@ -128,7 +130,7 @@ async def main(ws: WebSocket) -> None:
     task = PipelineTask(
         pipeline,
         params=PipelineParams(
-            allow_interruptions=False,       # el bot termina su frase antes de escuchar
+            allow_interruptions=True,       # deja pasar barge-in
             audio_in_sample_rate=8000,
             audio_out_sample_rate=8000,
             enable_metrics=True,
@@ -142,11 +144,10 @@ async def main(ws: WebSocket) -> None:
     async def _on_connect(_transport, client):
         logger.info(f"Client connected: {client}")
 
-    @transport.event_handler("on_vad_detected")
-    async def _on_vad_detected(_transport, vad_event):
-        if vad_event.duration_ms >= 200:
-            FIRST_REPLY = "¡Hola! Soy Lorenzo de TDX, ¿cómo estás?"
-            await task.queue_text(FIRST_REPLY)  # helper que pasa por TTS
+    @transport.event_handler("on_user_started_speaking")
+    async def _greet(_transport, evt):
+        FIRST_REPLY = "¡Hola! Soy Lorenzo de TDX, ¿cómo estás?"
+        await task.queue_text(FIRST_REPLY)  # helper que pasa por TTS
 
     @transport.event_handler("on_client_disconnected")
     async def _on_disconnect(_transport, client):
