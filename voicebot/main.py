@@ -18,7 +18,7 @@ async def websocket_endpoint(ws: WebSocket):
 VOICE_TWIML = """
 <Response>
   <Connect>
-    <Stream url="wss://e3fe-20-42-11-17.ngrok-free.app/ws" track="both_tracks"/>
+    <Stream url="wss://aivoicetwilio-vf.onrender.com/ws" track="both_tracks"/>
   </Connect>
 </Response>
 """.strip()
