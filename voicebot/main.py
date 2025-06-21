@@ -2,7 +2,7 @@
 from fastapi import FastAPI, WebSocket, Request
 from dotenv import load_dotenv
 from fastapi.responses import Response
-from bot import bot
+from voicebot.bot import bot
 from loguru import logger
 
 app = FastAPI()
