@@ -127,10 +127,13 @@ where:
 4. **Specify the Entry Point**:
    - In the `Start Command` field, enter `python main.py` to specify that `main.py` is the entry point for your application.
 
-5. **Start the Service**:
+5. **Remove Dockerfile**:
+   - Ensure that the `Dockerfile` is not included in your repository, as Render will not use it.
+
+6. **Start the Service**:
    - Click `Create Web Service` to deploy your application.
 
-6. **Verify Deployment**:
+7. **Verify Deployment**:
    - Once the deployment is complete, verify that your application is running by accessing the provided URL.
 
 ### Additional Configuration
