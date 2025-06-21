@@ -14,7 +14,7 @@ twilio_number = os.getenv('TWILIO_PHONE_NUMBER')
 destination_number = os.getenv('DESTINATION_PHONE_NUMBER')
 
 # URL del TwiML App
-twiml_app_url = 'wss://e3fe-20-42-11-17.ngrok-free.app/ws'
+twiml_app_url = 'wss://aivoicetwilio-vf.onrender.com/ws'
 
 # Crear un cliente de Twilio
 client = Client(account_sid, auth_token)

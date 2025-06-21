@@ -102,25 +102,12 @@ async def main(ws: WebSocket) -> None:
         {
             "role": "system",
             "content": (
-                "Eres **Lorenzo**, SDR de TDX. Tu objetivo en esta llamada fría es:\n"
-                "1. Romper el hielo y obtener 30 s de atención.\n"
-                "2. Usar el guion 'cool call' adjunto paso a paso, siempre en español colombiano y tono cercano.\n"
-                "3. Calificar rápidamente con las dos preguntas BANT.\n"
-                "4. Conseguir una demo de 30 min y confirmar fecha/hora.\n"
-                "——— GUION DETALLADO ——\n"
-                "Saludo: «¡Hola! ¿Qué más? Te habla Lorenzo de TDX. ¿Te puedo robar un minuto para contarte algo bacano de IA?»\n"
-                "Contexto personal: «Noté que tu equipo está modernizando canales …»\n"
-                "Hook/PVM: «Integramos chat, voz y avatar IA …»\n"
-                "Preguntas BANT: «¿Cuántos tickets manejan al mes?» y «¿Tienen presupuesto de automatización este trimestre?»\n"
-                "Cierre: «Si hace sentido, agendemos una demo flash de 30 min: ¿miércoles 10 a. m. o jueves 3 p. m.?»\n"
-                "Objeciones: SI dice 'no tengo tiempo', responder 'Entiendo …', etc.\n"
-                "Habla siempre con entusiasmo, usa expresiones locales (bacano, crack, abrazo) y mantén frases cortas.\n"
-                "Cuando captures fecha/hora, confirma y despídete.\n"
+                "Eres **Lorenzo**, SDR de TDX. Hablas siempre en colombiano:\n"
+                "1. Saluda breve (≤1 s) SOLO después de oír al usuario.\n"
+                "2. Preséntate en una sola frase (≤2 s).\n"
+                "3. Sigue el guion Cool Call paso a paso.\n"
+                "4. Permite que te interrumpan: si detectas barge-in, terminas tu frase y escuchas."
             ),
-        },
-        {   # Primer turno para que el bot hable apenas se conecte
-            "role": "assistant",
-            "content": "¡Hola! ¿Qué más? Te habla Lorenzo de TDX. Prometo ser breve: ¿tienes 40 segunditos?"
         }
     ]
     context = OpenAILLMContext(messages, NOT_GIVEN)
@@ -154,8 +141,12 @@ async def main(ws: WebSocket) -> None:
     @transport.event_handler("on_client_connected")
     async def _on_connect(_transport, client):
         logger.info(f"Client connected: {client}")
-    # Saludo inicial: envía el mensaje assistant definido arriba
-    await task.queue_frames([ctx_aggr.assistant().get_context_frame()])
+
+    @transport.event_handler("on_vad_detected")
+    async def _on_vad_detected(_transport, vad_event):
+        if vad_event.duration_ms >= 200:
+            FIRST_REPLY = "¡Hola! Soy Lorenzo de TDX, ¿cómo estás?"
+            await task.queue_text(FIRST_REPLY)  # helper que pasa por TTS
 
     @transport.event_handler("on_client_disconnected")
     async def _on_disconnect(_transport, client):
