@@ -63,8 +63,8 @@ load_dotenv(override=True)
 
 # ───────────────────────────── Core WebSocket flow ───────────────────────
 async def main(ws: WebSocket) -> None:
-    logger.info("🚀 FINAL VERSION - AUDIO CONFIRMED WORKING")
-    logger.info("🔖 VERSION TIMESTAMP: 2025-06-22-02:55 - PIPELINE PROCESSING ENABLED")
+    logger.info("🚀 FINAL VERSION - VAD ENABLED FOR AUDIO PROCESSING")
+    logger.info("🔖 VERSION TIMESTAMP: 2025-06-22-03:05 - VAD ACTIVATED")
     
     try:
         # ───── SIMPLE TWILIO HANDSHAKE ─────
@@ -134,15 +134,15 @@ async def main(ws: WebSocket) -> None:
         context = OpenAILLMContext(messages, NOT_GIVEN)
         ctx_aggr = llm.create_context_aggregator(context)
 
-        # ───── TRANSPORT SIN VAD PARA SIMPLIFICAR ─────
-        logger.info("🔧 Creating transport...")
+        # ───── TRANSPORT CON VAD ACTIVADO ─────
+        logger.info("🔧 Creating transport WITH VAD...")
         transport = FastAPIWebsocketTransport(
             websocket=ws,
             params=FastAPIWebsocketParams(
                 audio_in_enabled=True,
                 audio_out_enabled=True,
                 add_wav_header=False,
-                vad_analyzer=None,  # Sin VAD por ahora
+                vad_analyzer=SileroVADAnalyzer(),  # ✅ VAD ACTIVADO
                 serializer=serializer,
             ),
         )
@@ -195,14 +195,10 @@ async def main(ws: WebSocket) -> None:
         logger.info("🎵 Audio should now flow through Pipecat pipeline to Deepgram")
         
         # ───── MONITOREO DE ESTADO ─────
-        audio_count = 0
-        transcript_count = 0
-        
         async def monitor_stats():
-            nonlocal audio_count, transcript_count
             while True:
                 await asyncio.sleep(5)  # Every 5 seconds
-                logger.info(f"📊 PIPELINE STATS - Audio processed: {audio_count}, Transcripts: {transcript_count}")
+                logger.info(f"📊 PIPELINE RUNNING - Waiting for audio processing...")
                 
                 # Force garbage collection to see if it helps
                 import gc
