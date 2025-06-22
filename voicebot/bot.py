@@ -71,7 +71,7 @@ async def _voice_call(ws: WebSocket):
         # Groq Llama 70B LLM
         llm = GroqLLMService(
             api_key=os.getenv("GROQ_API_KEY"), 
-            model="llama-3.1-70b-versatile"
+            model="llama-3.3-70b-versatile"
         )
         logger.info("✅ Groq Llama 70B LLM creado")
         
@@ -174,7 +174,7 @@ async def _sms(request: Request) -> Response:
         # Usar Groq Llama para respuesta de texto
         llm = GroqLLMService(
             api_key=os.getenv("GROQ_API_KEY"),
-            model="llama-3.1-70b-versatile"
+            model="llama-3.3-70b-versatile"
         )
         
         # Contexto simple para SMS
@@ -223,7 +223,7 @@ async def health_check():
         },
         "services": {
             "stt": "Groq Whisper (temp=0)",
-            "llm": "Groq Llama 3.1 70B", 
+            "llm": "Groq Llama 3.3 70B", 
             "tts": "ElevenLabs (ucWwAruuGtBeHfnAaKcJ)"
         }
     }
