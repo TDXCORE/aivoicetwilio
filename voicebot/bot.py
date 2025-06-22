@@ -22,7 +22,6 @@ from dotenv import load_dotenv
 from fastapi import Request, WebSocket
 
 from pipecat.audio.vad.silero import SileroVADAnalyzer
-from pipecat.audio.vad.vad_analyzer import VADParams
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
@@ -46,9 +45,9 @@ load_dotenv(override=True)
 
 # ───────────────────────────── Spy Frame Processor ──────────────────────────────
 class Spy(FrameProcessor):
-    def __init__(self, name: str = "Spy"):
+    def __init__(self, spy_name: str = "Spy"):
         super().__init__()
-        self.name = name
+        self.spy_name = spy_name  # Usar atributo propio en lugar de 'name'
         self.frame_count = 0
 
     async def process_frame(self, frame, direction: FrameDirection):
@@ -57,7 +56,7 @@ class Spy(FrameProcessor):
         
         # Log crítico para debugging
         if frame_type in ["AudioRawFrame", "TextFrame", "TranscriptionFrame", "LLMMessagesFrame"]:
-            logger.info(f"🔍 {self.name} - {direction.name} #{self.frame_count}: {frame_type}")
+            logger.info(f"🔍 {self.spy_name} - {direction.name} #{self.frame_count}: {frame_type}")
             
             # Log contenido para frames importantes
             if hasattr(frame, 'text') and frame.text:
@@ -65,7 +64,7 @@ class Spy(FrameProcessor):
             elif hasattr(frame, 'audio') and frame.audio:
                 logger.debug(f"   🎵 Audio: {len(frame.audio)} bytes")
         else:
-            logger.debug(f"🔍 {self.name} - {direction.name} #{self.frame_count}: {frame_type}")
+            logger.debug(f"🔍 {self.spy_name} - {direction.name} #{self.frame_count}: {frame_type}")
         
         await super().process_frame(frame, direction)
 
@@ -138,12 +137,9 @@ async def main(ws: WebSocket) -> None:
         # ───── TRANSPORT CON VAD OPTIMIZADO ─────
         vad = SileroVADAnalyzer(
             sample_rate=8000,
-            params=VADParams(
-                confidence=0.3,     # Más sensible (default 0.7)
-                start_secs=0.1,     # Detecta habla más rápido (default 0.2)
-                stop_secs=0.5,      # Menos silencio para parar (default 0.8)
-                min_volume=0.4      # Volumen mínimo más bajo (default 0.6)
-            )
+            threshold=0.3,                    # ← Vuelve a 'threshold', no 'speech_threshold'
+            min_speech_duration_ms=250,       # Detecta habla más rápido
+            min_silence_duration_ms=300       # Menos tiempo de silencio
         )
         
         transport = FastAPIWebsocketTransport(
@@ -226,9 +222,9 @@ async def main(ws: WebSocket) -> None:
                 
                 for processor in pipeline.processors:
                     if isinstance(processor, Spy):
-                        if processor.name == "INPUT":
+                        if processor.spy_name == "INPUT":
                             input_spy = processor
-                        elif processor.name == "OUTPUT":
+                        elif processor.spy_name == "OUTPUT":
                             output_spy = processor
                 
                 input_count = input_spy.frame_count if input_spy else 0
