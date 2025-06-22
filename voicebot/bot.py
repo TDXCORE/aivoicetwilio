@@ -29,7 +29,6 @@ import numpy as np
 load_dotenv(override=True)
 
 SAMPLE_RATE = 8000  # Twilio Media Streams
-FRAME_SIZE  = 160  
 
 # ──────────────────────────────────────────
 # FUNCIÓN DEBUG SIMPLE PARA LOGS
@@ -102,7 +101,7 @@ async def _voice_call(ws: WebSocket):
         )
         logger.info("✅ Groq Llama 70B LLM creado")
         
-        # ───── ElevenLabs TTS con formato correcto para Twilio ─────
+        # ───── ElevenLabs TTS SIN parámetros específicos (como Pipecat recomienda) ─────
         elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
         voice_id = "ucWwAruuGtBeHfnAaKcJ"
         
@@ -112,16 +111,13 @@ async def _voice_call(ws: WebSocket):
             
         logger.info(f"🎵 Configurando ElevenLabs con voice_id: {voice_id}")
         
-        # SOLUCIÓN: Usar formato μ-law compatible con Twilio
+        # SOLUCIÓN: Usar ElevenLabs sin especificar formato - usar defaults
         tts = ElevenLabsTTSService(
             api_key=elevenlabs_api_key,
             voice_id=voice_id,
-            model="eleven_turbo_v2_5",
-            format="ulaw_8000",  # ← CLAVE: Formato μ-law 8kHz para Twilio
-            sample_rate=8000,
-            chunk_size=FRAME_SIZE,            # ← Mismo sample rate que Twilio
+            # NO especificar output_format, sample_rate, model - usar defaults
         )
-        logger.info("✅ ElevenLabs TTS creado con formato μ-law 8kHz (compatible con Twilio)")
+        logger.info("✅ ElevenLabs TTS creado con configuración default (compatible)")
 
         # ───── CONTEXTO LLM ─────
         messages = [
@@ -143,24 +139,19 @@ async def _voice_call(ws: WebSocket):
         vad = SileroVADAnalyzer(sample_rate=SAMPLE_RATE)
         logger.info("✅ Silero VAD creado")
 
-        # ───── TRANSPORT BÁSICO SIN DEBUG COMPLEJO ─────
+        # ───── TRANSPORT SIMPLE como en el ejemplo que funciona ─────
         transport = FastAPIWebsocketTransport(
             websocket=ws,
             params=FastAPIWebsocketParams(
                 audio_in_enabled=True,
                 audio_out_enabled=True,
                 add_wav_header=False,
-                audio_out_encoding="mulaw",
                 vad_analyzer=vad,
                 serializer=serializer,
-                # Configuraciones de audio para Twilio
-                audio_in_sample_rate=SAMPLE_RATE,
-                audio_out_sample_rate=SAMPLE_RATE,
-                audio_in_channels=1,
-                audio_out_channels=1,
+                # NO especificar sample rates - usar defaults como el ejemplo
             ),
         )
-        logger.info("✅ Transport creado")
+        logger.info("✅ Transport creado con configuración simple")
 
         # ───── PIPELINE BÁSICO Y FUNCIONAL ─────
         pipeline = Pipeline([
@@ -174,17 +165,15 @@ async def _voice_call(ws: WebSocket):
         ])
         logger.info("✅ Pipeline Groq + ElevenLabs creado")
 
-        # ───── TASK Y RUNNER ─────
+        # ───── TASK CON PARÁMETROS SIMPLES COMO EL EJEMPLO ─────
         task = PipelineTask(
             pipeline,
             params=PipelineParams(
                 allow_interruptions=True,
-                audio_in_sample_rate=SAMPLE_RATE,
-                audio_out_sample_rate=SAMPLE_RATE,
+                audio_in_sample_rate=8000,    # Como en el ejemplo que funciona
+                audio_out_sample_rate=8000,   # Como en el ejemplo que funciona
                 enable_metrics=True,
-                # Configuraciones adicionales para audio
-                audio_out_enabled=True,
-                audio_in_enabled=True,
+                # Sin parámetros adicionales complicados
             ),
         )
         
