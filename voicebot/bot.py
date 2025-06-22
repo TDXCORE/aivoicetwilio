@@ -101,7 +101,7 @@ async def _voice_call(ws: WebSocket):
         )
         logger.info("✅ Groq Llama 70B LLM creado")
         
-        # ───── ElevenLabs TTS con verificación Y LOGS ─────
+        # ───── ElevenLabs TTS con configuración básica ─────
         elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
         voice_id = "ucWwAruuGtBeHfnAaKcJ"
         
@@ -111,24 +111,15 @@ async def _voice_call(ws: WebSocket):
             
         logger.info(f"🎵 Configurando ElevenLabs con voice_id: {voice_id}")
         
-        # Crear TTS con interceptor para debug
-        class ElevenLabsDebugWrapper(ElevenLabsTTSService):
-            async def run_tts(self, text: str) -> AsyncGenerator[bytes, None]:
-                logger.info(f"🎵 ElevenLabs generando audio para: '{text[:50]}...'")
-                async for audio_chunk in super().run_tts(text):
-                    logger.info(f"🔊 ElevenLabs chunk generado: {len(audio_chunk)} bytes")
-                    log_audio_debug(AudioRawFrame(audio_chunk, sample_rate=16000, user_audio=False), "ELEVENLABS-OUT")
-                    yield audio_chunk
-        
-        tts = ElevenLabsDebugWrapper(
+        # Configuración más básica y compatible
+        tts = ElevenLabsTTSService(
             api_key=elevenlabs_api_key,
             voice_id=voice_id,
-            # Configuraciones explícitas para compatibilidad con Twilio
-            model="eleven_turbo_v2_5",
-            output_format="pcm_16000",
-            sample_rate=16000
+            # Usar configuraciones por defecto más compatibles
+            model="eleven_monolingual_v1",  # Modelo más estable
+            # No especificar output_format ni sample_rate para usar defaults
         )
-        logger.info("✅ ElevenLabs TTS creado con debug")
+        logger.info("✅ ElevenLabs TTS creado con configuración básica")
 
         # ───── CONTEXTO LLM ─────
         messages = [
@@ -150,13 +141,8 @@ async def _voice_call(ws: WebSocket):
         vad = SileroVADAnalyzer(sample_rate=SAMPLE_RATE)
         logger.info("✅ Silero VAD creado")
 
-        # ───── TRANSPORT CON DEBUG ─────
-        class FastAPIWebsocketDebugTransport(FastAPIWebsocketTransport):
-            async def _handle_audio(self, frame: AudioRawFrame):
-                log_audio_debug(frame, "TRANSPORT-IN" if frame.user_audio else "TRANSPORT-OUT")
-                await super()._handle_audio(frame)
-                
-        transport = FastAPIWebsocketDebugTransport(
+        # ───── TRANSPORT BÁSICO SIN DEBUG COMPLEJO ─────
+        transport = FastAPIWebsocketTransport(
             websocket=ws,
             params=FastAPIWebsocketParams(
                 audio_in_enabled=True,
@@ -171,19 +157,19 @@ async def _voice_call(ws: WebSocket):
                 audio_out_channels=1,
             ),
         )
-        logger.info("✅ Transport creado con debug")
+        logger.info("✅ Transport creado")
 
-        # ───── PIPELINE SIMPLE SIN PROCESADORES DEBUG ─────
+        # ───── PIPELINE BÁSICO Y FUNCIONAL ─────
         pipeline = Pipeline([
             transport.input(),      # WebSocket Twilio
             stt,                   # Groq Whisper
             ctx_aggr.user(),       # Contexto usuario
             llm,                   # Groq Llama 70B
-            tts,                   # ElevenLabs TTS (con debug interno)
-            transport.output(),    # De vuelta a Twilio (con debug interno)
+            tts,                   # ElevenLabs TTS 
+            transport.output(),    # De vuelta a Twilio
             ctx_aggr.assistant(),  # Contexto asistente
         ])
-        logger.info("✅ Pipeline Groq + ElevenLabs creado CON DEBUG INTEGRADO")
+        logger.info("✅ Pipeline Groq + ElevenLabs creado")
 
         # ───── TASK Y RUNNER ─────
         task = PipelineTask(
@@ -199,20 +185,16 @@ async def _voice_call(ws: WebSocket):
             ),
         )
         
-        # ───── SALUDO AUTOMÁTICO CON DEBUG ─────
+        # ───── SALUDO AUTOMÁTICO SIMPLE ─────
         async def send_greeting():
             await asyncio.sleep(3)  # Esperar conexión estable
-            logger.info("👋 Enviando saludo Groq + ElevenLabs...")
+            logger.info("👋 Enviando saludo...")
             greeting = TextFrame("¡Hola! Soy Lorenzo de TDX. ¿Me escuchas bien?")
             await task.queue_frame(greeting)
-            logger.info("✅ Saludo Groq + ElevenLabs enviado")
+            logger.info("✅ Saludo enviado")
             
-            # Segundo mensaje de prueba para debug
-            await asyncio.sleep(5)
-            logger.info("🔧 Enviando mensaje de prueba...")
-            test_msg = TextFrame("Este es un mensaje de prueba para verificar que el audio funciona correctamente.")
-            await task.queue_frame(test_msg)
-            logger.info("✅ Mensaje de prueba enviado")
+            # Log para verificar si ElevenLabs funciona
+            logger.info("🔍 Verificando que ElevenLabs esté procesando audio...")
 
         asyncio.create_task(send_greeting())
 
