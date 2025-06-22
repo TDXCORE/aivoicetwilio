@@ -63,8 +63,8 @@ load_dotenv(override=True)
 
 # ───────────────────────────── Core WebSocket flow ───────────────────────
 async def main(ws: WebSocket) -> None:
-    logger.info("🚀 FINAL VERSION WITH DEBUG - Starting WebSocket bot")
-    logger.info("🔖 VERSION TIMESTAMP: 2025-06-22-02:45 - WEBSOCKET DEBUG ACTIVATED")
+    logger.info("🚀 FINAL VERSION - AUDIO CONFIRMED WORKING")
+    logger.info("🔖 VERSION TIMESTAMP: 2025-06-22-02:55 - PIPELINE PROCESSING ENABLED")
     
     try:
         # ───── SIMPLE TWILIO HANDSHAKE ─────
@@ -183,77 +183,26 @@ async def main(ws: WebSocket) -> None:
         # Enviar saludo en background
         asyncio.create_task(send_greeting())
 
-        # ───── WEBSOCKET DEBUG ACTIVADO ─────
-        logger.info("🔍 ACTIVATING FULL WEBSOCKET DEBUG...")
+        # ───── WEBSOCKET DEBUG DESACTIVADO PARA PERMITIR PIPELINE ─────
+        logger.info("🔧 WebSocket debug DISABLED - Pipeline will process audio")
         
-        # Monitor raw WebSocket messages in background
+        # El debug anterior confirmó que el audio llega correctamente
+        # Ahora necesitamos que Pipecat procese ese audio
+        
+        # ❌ NO ACTIVAR DEBUG - INTERFIERE CON EL PIPELINE
+        # asyncio.create_task(debug_websocket())
+        
+        logger.info("🎵 Audio should now flow through Pipecat pipeline to Deepgram")
+        
+        # ───── MONITOREO DE ESTADO ─────
         audio_count = 0
         transcript_count = 0
         
-        async def debug_websocket():
-            nonlocal audio_count, transcript_count
-            try:
-                message_count = 0
-                async for raw_message in ws.iter_text():
-                    message_count += 1
-                    logger.info(f"📨 WS Message #{message_count}: {raw_message}")
-                    
-                    try:
-                        msg = json.loads(raw_message)
-                        event_type = msg.get('event', 'unknown')
-                        logger.info(f"📨 Event type: {event_type}")
-                        
-                        if event_type == 'media':
-                            audio_count += 1
-                            media_data = msg.get('media', {})
-                            chunk = media_data.get('chunk', 'N/A')
-                            timestamp = media_data.get('timestamp', 'N/A')
-                            payload = media_data.get('payload', '')
-                            logger.info(f"🎵 AUDIO #{audio_count}: chunk={chunk}, ts={timestamp}, payload_len={len(payload)}")
-                            
-                            # Log every 10 audio messages
-                            if audio_count % 10 == 0:
-                                logger.info(f"🎵 Total audio messages received: {audio_count}")
-                                
-                        elif event_type == 'start':
-                            tracks = msg.get('start', {}).get('tracks', [])
-                            logger.info(f"🎯 TRACKS CONFIGURED: {tracks}")
-                            if 'inbound' not in tracks:
-                                logger.error(f"❌ NO INBOUND TRACK - WON'T RECEIVE AUDIO: {tracks}")
-                            else:
-                                logger.info(f"✅ INBOUND TRACK OK - SHOULD RECEIVE AUDIO: {tracks}")
-                                
-                        elif event_type == 'stop':
-                            logger.info(f"🛑 Stream stopped: {msg}")
-                            break
-                            
-                        elif event_type == 'mark':
-                            mark_name = msg.get('mark', {}).get('name', 'unknown')
-                            logger.info(f"📍 Mark received: {mark_name}")
-                            
-                        else:
-                            logger.info(f"❓ Unknown event: {event_type} - {msg}")
-                            
-                    except json.JSONDecodeError:
-                        logger.info(f"📨 Non-JSON message: {raw_message}")
-                        
-                    # Safety exit
-                    if message_count > 1000:
-                        logger.warning("⚠️ Too many messages, stopping debug")
-                        break
-                        
-            except Exception as e:
-                logger.error(f"💥 WebSocket debug error: {e}")
-        
-        # ✅ ACTIVAR DEBUG - ESTO ES CRÍTICO PARA VER QUÉ PASA
-        asyncio.create_task(debug_websocket())
-        
-        # ───── MONITOREO DE ESTADO ─────
         async def monitor_stats():
             nonlocal audio_count, transcript_count
             while True:
                 await asyncio.sleep(5)  # Every 5 seconds
-                logger.info(f"📊 CURRENT STATS - Audio: {audio_count}, Transcripts: {transcript_count}")
+                logger.info(f"📊 PIPELINE STATS - Audio processed: {audio_count}, Transcripts: {transcript_count}")
                 
                 # Force garbage collection to see if it helps
                 import gc
