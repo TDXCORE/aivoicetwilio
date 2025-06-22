@@ -86,7 +86,9 @@ async def _voice_call(ws: WebSocket):
         tts = CartesiaTTSService(
             api_key=cartesia_api_key,
             voice_id="79a125e8-cd45-4c13-8a67-188112f4dd22",
-            stream_mode="chunked",  # Spanish voice
+            output_format="ulaw_8000",   # ← formato 8 kHz μ-law
+            sample_rate=8000,            # ← asegura la frecuencia correcta
+            stream_mode="chunked",
             # Sin parámetros adicionales - usar defaults de Pipecat
         )
         logger.info("✅ Cartesia TTS creado (optimizado para Pipecat)")
@@ -121,6 +123,7 @@ async def _voice_call(ws: WebSocket):
                 add_wav_header=False,
                 vad_analyzer=vad,
                 serializer=serializer,
+                audio_out_sample_rate=8000,
                 # Sin especificar sample rates - usar defaults
             ),
         )
