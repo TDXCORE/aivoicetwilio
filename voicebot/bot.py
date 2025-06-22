@@ -137,7 +137,9 @@ async def main(ws: WebSocket) -> None:
         # ───── TRANSPORT CON VAD OPTIMIZADO ─────
         vad = SileroVADAnalyzer(
             sample_rate=8000,
-            threshold=0.3,  # Más sensible
+            speech_threshold=0.3,  # Nuevo parámetro en 0.0.71
+            min_speech_duration_ms=200,  # Más sensible
+            min_silence_duration_ms=300   # Menos tiempo de silencio
         )
         
         transport = FastAPIWebsocketTransport(
