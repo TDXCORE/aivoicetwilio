@@ -18,12 +18,10 @@ from pipecat.serializers.twilio import TwilioFrameSerializer
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.services.groq.stt import GroqSTTService
 from pipecat.services.groq.llm import GroqLLMService
-from pipecat.services.elevenlabs.tts import ElevenLabsTTSService
+from pipecat.services.cartesia.tts import CartesiaTTSService
 from pipecat.processors.aggregators.openai_llm_context import OpenAILLMContext
 from openai._types import NOT_GIVEN
-from pipecat.frames.frames import TextFrame, AudioRawFrame, Frame
-from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
-import numpy as np
+from pipecat.frames.frames import TextFrame
 
 # Cargar variables de entorno
 load_dotenv(override=True)
@@ -31,36 +29,11 @@ load_dotenv(override=True)
 SAMPLE_RATE = 8000  # Twilio Media Streams
 
 # ──────────────────────────────────────────
-# FUNCIÓN DEBUG SIMPLE PARA LOGS
-# ──────────────────────────────────────────
-def log_audio_debug(frame: Frame, stage: str):
-    """Log simple para debug de audio"""
-    if isinstance(frame, AudioRawFrame):
-        if frame.user_audio:
-            logger.info(f"🎤 [{stage}] AUDIO INPUT: {len(frame.audio)} bytes, rate: {frame.sample_rate}Hz")
-        else:
-            try:
-                audio_array = np.frombuffer(frame.audio, dtype=np.int16)
-                max_amp = np.max(np.abs(audio_array)) if len(audio_array) > 0 else 0
-                rms = np.sqrt(np.mean(audio_array.astype(np.float32) ** 2)) if len(audio_array) > 0 else 0
-                logger.info(f"🔊 [{stage}] AUDIO OUTPUT: {len(frame.audio)} bytes, rate: {frame.sample_rate}Hz, max_amp: {max_amp}, rms: {rms:.2f}")
-                
-                if max_amp < 100:
-                    logger.warning(f"⚠️  [{stage}] Audio muy silencioso (max_amp: {max_amp})")
-                    
-            except Exception as e:
-                logger.error(f"❌ [{stage}] Error analizando audio: {e}")
-                
-    elif isinstance(frame, TextFrame):
-        logger.info(f"📝 [{stage}] TEXT: '{frame.text}'")
-
-
-# ──────────────────────────────────────────
 # 1) PIPELINE PARA LLAMADAS DE VOZ (WebSocket)
 # ──────────────────────────────────────────
 async def _voice_call(ws: WebSocket):
-    """Maneja la conexión Media Streams de Twilio - Groq + ElevenLabs."""
-    logger.info("🎯 Iniciando pipeline de voz Groq + ElevenLabs...")
+    """Maneja la conexión Media Streams de Twilio - Groq + Cartesia."""
+    logger.info("🎯 Iniciando pipeline de voz Groq + Cartesia...")
     
     try:
         # ───── TWILIO HANDSHAKE (necesario para Media Streams) ─────
@@ -84,8 +57,8 @@ async def _voice_call(ws: WebSocket):
         )
         logger.info("✅ Twilio serializer creado")
 
-        # ───── SERVICIOS GROQ + ELEVENLABS ─────
-        # Groq Whisper STT (temperatura 0)
+        # ───── SERVICIOS GROQ + CARTESIA ─────
+        # Groq Whisper STT
         stt = GroqSTTService(
             api_key=os.getenv("GROQ_API_KEY"),
             model="whisper-large-v3",
@@ -101,23 +74,21 @@ async def _voice_call(ws: WebSocket):
         )
         logger.info("✅ Groq Llama 70B LLM creado")
         
-        # ───── ElevenLabs TTS SIN parámetros específicos (como Pipecat recomienda) ─────
-        elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
-        voice_id = "ucWwAruuGtBeHfnAaKcJ"
-        
-        if not elevenlabs_api_key:
-            logger.error("❌ ELEVENLABS_API_KEY no configurada")
-            raise ValueError("ELEVENLABS_API_KEY requerida")
+        # Cartesia TTS (optimizado para Pipecat)
+        cartesia_api_key = os.getenv("CARTESIA_API_KEY")
+        if not cartesia_api_key:
+            logger.error("❌ CARTESIA_API_KEY no configurada")
+            raise ValueError("CARTESIA_API_KEY requerida")
             
-        logger.info(f"🎵 Configurando ElevenLabs con voice_id: {voice_id}")
+        logger.info("🎵 Configurando Cartesia TTS...")
         
-        # SOLUCIÓN: Usar ElevenLabs sin especificar formato - usar defaults
-        tts = ElevenLabsTTSService(
-            api_key=elevenlabs_api_key,
-            voice_id=voice_id,
-            # NO especificar output_format, sample_rate, model - usar defaults
+        # Usar una voz en español o compatible
+        tts = CartesiaTTSService(
+            api_key=cartesia_api_key,
+            voice_id="79a125e8-cd45-4c13-8a67-188112f4dd22",  # Spanish voice
+            # Sin parámetros adicionales - usar defaults de Pipecat
         )
-        logger.info("✅ ElevenLabs TTS creado con configuración default (compatible)")
+        logger.info("✅ Cartesia TTS creado (optimizado para Pipecat)")
 
         # ───── CONTEXTO LLM ─────
         messages = [
@@ -127,6 +98,7 @@ async def _voice_call(ws: WebSocket):
                     "Eres Lorenzo, un asistente de voz amigable de TDX. "
                     "Responde en español de forma natural y breve. "
                     "Máximo 2 oraciones por respuesta. "
+                    "Tu salida será convertida a audio, así que no incluyas caracteres especiales. "
                     "Siempre confirma que escuchaste al usuario."
                 )
             }
@@ -135,11 +107,11 @@ async def _voice_call(ws: WebSocket):
         ctx_aggr = llm.create_context_aggregator(context)
         logger.info("✅ Groq context creado")
 
-        # ───── VAD SIMPLE (sin parámetros problemáticos) ─────
+        # ───── VAD SIMPLE ─────
         vad = SileroVADAnalyzer(sample_rate=SAMPLE_RATE)
         logger.info("✅ Silero VAD creado")
 
-        # ───── TRANSPORT SIMPLE como en el ejemplo que funciona ─────
+        # ───── TRANSPORT SIMPLE (como en el ejemplo de Pipecat) ─────
         transport = FastAPIWebsocketTransport(
             websocket=ws,
             params=FastAPIWebsocketParams(
@@ -148,56 +120,64 @@ async def _voice_call(ws: WebSocket):
                 add_wav_header=False,
                 vad_analyzer=vad,
                 serializer=serializer,
-                # NO especificar sample rates - usar defaults como el ejemplo
+                # Sin especificar sample rates - usar defaults
             ),
         )
-        logger.info("✅ Transport creado con configuración simple")
+        logger.info("✅ Transport creado")
 
-        # ───── PIPELINE BÁSICO Y FUNCIONAL ─────
+        # ───── PIPELINE GROQ + CARTESIA (simple y efectivo) ─────
         pipeline = Pipeline([
             transport.input(),      # WebSocket Twilio
             stt,                   # Groq Whisper
             ctx_aggr.user(),       # Contexto usuario
             llm,                   # Groq Llama 70B
-            tts,                   # ElevenLabs TTS 
+            tts,                   # Cartesia TTS
             transport.output(),    # De vuelta a Twilio
             ctx_aggr.assistant(),  # Contexto asistente
         ])
-        logger.info("✅ Pipeline Groq + ElevenLabs creado")
+        logger.info("✅ Pipeline Groq + Cartesia creado")
 
-        # ───── TASK CON PARÁMETROS SIMPLES COMO EL EJEMPLO ─────
+        # ───── TASK CON PARÁMETROS SIMPLES ─────
         task = PipelineTask(
             pipeline,
             params=PipelineParams(
                 allow_interruptions=True,
-                audio_in_sample_rate=8000,    # Como en el ejemplo que funciona
-                audio_out_sample_rate=8000,   # Como en el ejemplo que funciona
+                audio_in_sample_rate=8000,    # Twilio standard
+                audio_out_sample_rate=8000,   # Twilio standard
                 enable_metrics=True,
-                # Sin parámetros adicionales complicados
             ),
         )
         
-        # ───── SALUDO AUTOMÁTICO SIMPLE ─────
+        # ───── EVENTOS DE TRANSPORTE ─────
+        @transport.event_handler("on_client_connected")
+        async def on_client_connected(transport, client):
+            logger.info(f"🔗 Cliente conectado: {client}")
+            # Iniciar conversación con saludo
+            await task.queue_frames([ctx_aggr.user().get_context_frame()])
+
+        @transport.event_handler("on_client_disconnected")
+        async def on_client_disconnected(transport, client):
+            logger.info(f"👋 Cliente desconectado: {client}")
+            await task.cancel()
+        
+        # ───── SALUDO AUTOMÁTICO ─────
         async def send_greeting():
-            await asyncio.sleep(3)  # Esperar conexión estable
+            await asyncio.sleep(2)  # Esperar conexión estable
             logger.info("👋 Enviando saludo...")
-            greeting = TextFrame("¡Hola! Soy Lorenzo de TDX. ¿Me escuchas bien?")
+            greeting = TextFrame("¡Hola! Soy Lorenzo de TDX. Ahora uso Groq y Cartesia para una experiencia de audio mejorada. ¿En qué puedo ayudarte?")
             await task.queue_frame(greeting)
             logger.info("✅ Saludo enviado")
-            
-            # Log para verificar si ElevenLabs funciona
-            logger.info("🔍 Verificando que ElevenLabs esté procesando audio...")
 
         asyncio.create_task(send_greeting())
 
         # ───── EJECUTAR PIPELINE ─────
-        logger.info("🚀 Iniciando pipeline Groq + ElevenLabs...")
+        logger.info("🚀 Iniciando pipeline Groq + Cartesia...")
         runner = PipelineRunner(handle_sigint=False)
         await runner.run(task)
-        logger.info("📞 Llamada Groq + ElevenLabs finalizada")
+        logger.info("📞 Llamada Groq + Cartesia finalizada")
         
     except Exception as e:
-        logger.exception(f"💥 Error en pipeline Groq + ElevenLabs: {e}")
+        logger.exception(f"💥 Error en pipeline Groq + Cartesia: {e}")
         raise
 
 
@@ -249,38 +229,38 @@ async def _sms(request: Request) -> Response:
 
 
 # ──────────────────────────────────────────
-# 3) HEALTH CHECK - SIN CAMBIOS
+# 3) HEALTH CHECK
 # ──────────────────────────────────────────
 async def health_check():
     """Health check endpoint."""
-    logger.info("🏥 Health check Groq + ElevenLabs")
+    logger.info("🏥 Health check Groq + Cartesia")
     return {
         "status": "healthy", 
-        "service": "TDX Voice Bot - Groq + ElevenLabs",
-        "version": "2025-06-22-GROQ-ELEVENLABS-DEBUG",
+        "service": "TDX Voice Bot - Groq + Cartesia",
+        "version": "2025-06-22-GROQ-CARTESIA",
         "apis": {
             "groq": bool(os.getenv("GROQ_API_KEY")),
-            "elevenlabs": bool(os.getenv("ELEVENLABS_API_KEY")),
+            "cartesia": bool(os.getenv("CARTESIA_API_KEY")),
             "twilio": bool(os.getenv("TWILIO_ACCOUNT_SID")),
         },
         "services": {
-            "stt": "Groq Whisper (temp=0)",
+            "stt": "Groq Whisper Large v3",
             "llm": "Groq Llama 3.3 70B", 
-            "tts": "ElevenLabs (ucWwAruuGtBeHfnAaKcJ)"
+            "tts": "Cartesia (Spanish voice)"
         }
     }
 
 
 # ──────────────────────────────────────────
-# 4) PUNTO ÚNICO DE ENTRADA - SIN CAMBIOS
+# 4) PUNTO ÚNICO DE ENTRADA
 # ──────────────────────────────────────────
 async def bot(ctx):
     """
-    Función principal Groq + ElevenLabs.
+    Función principal Groq + Cartesia.
     Compatible con tu main.py existente.
     """
     if isinstance(ctx, WebSocket):
-        logger.info("🗣️ Llamada de voz Twilio → Groq + ElevenLabs Stack")
+        logger.info("🗣️ Llamada de voz Twilio → Groq + Cartesia Stack")
         await _voice_call(ctx)
     elif isinstance(ctx, Request):
         logger.info("💬 Mensaje SMS/WhatsApp → Groq")
