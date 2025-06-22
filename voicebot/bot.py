@@ -31,40 +31,28 @@ load_dotenv(override=True)
 SAMPLE_RATE = 8000  # Twilio Media Streams
 
 # ──────────────────────────────────────────
-# CLASE DEBUG PARA MONITOREAR AUDIO
+# FUNCIÓN DEBUG SIMPLE PARA LOGS
 # ──────────────────────────────────────────
-class AudioDebugProcessor(FrameProcessor):
-    def __init__(self, debug_name: str):
-        super().__init__()
-        self.debug_name = debug_name
-        self.audio_in_count = 0
-        self.audio_out_count = 0
-        
-    async def process_frame(self, frame: Frame, direction: FrameDirection) -> Frame:
-        if isinstance(frame, AudioRawFrame):
-            if frame.user_audio:
-                self.audio_in_count += 1
-                logger.info(f"🎤 [{self.debug_name}] AUDIO IN #{self.audio_in_count}: {len(frame.audio)} bytes, rate: {frame.sample_rate}Hz")
-            else:
-                self.audio_out_count += 1
-                # Analizar el contenido del audio
-                try:
-                    audio_array = np.frombuffer(frame.audio, dtype=np.int16)
-                    max_amp = np.max(np.abs(audio_array)) if len(audio_array) > 0 else 0
-                    rms = np.sqrt(np.mean(audio_array.astype(np.float32) ** 2)) if len(audio_array) > 0 else 0
-                    logger.info(f"🔊 [{self.debug_name}] AUDIO OUT #{self.audio_out_count}: {len(frame.audio)} bytes, rate: {frame.sample_rate}Hz, max_amp: {max_amp}, rms: {rms:.2f}")
+def log_audio_debug(frame: Frame, stage: str):
+    """Log simple para debug de audio"""
+    if isinstance(frame, AudioRawFrame):
+        if frame.user_audio:
+            logger.info(f"🎤 [{stage}] AUDIO INPUT: {len(frame.audio)} bytes, rate: {frame.sample_rate}Hz")
+        else:
+            try:
+                audio_array = np.frombuffer(frame.audio, dtype=np.int16)
+                max_amp = np.max(np.abs(audio_array)) if len(audio_array) > 0 else 0
+                rms = np.sqrt(np.mean(audio_array.astype(np.float32) ** 2)) if len(audio_array) > 0 else 0
+                logger.info(f"🔊 [{stage}] AUDIO OUTPUT: {len(frame.audio)} bytes, rate: {frame.sample_rate}Hz, max_amp: {max_amp}, rms: {rms:.2f}")
+                
+                if max_amp < 100:
+                    logger.warning(f"⚠️  [{stage}] Audio muy silencioso (max_amp: {max_amp})")
                     
-                    # Detectar si el audio está silencioso
-                    if max_amp < 100:
-                        logger.warning(f"⚠️  [{self.debug_name}] Audio parece estar muy silencioso (max_amp: {max_amp})")
-                        
-                except Exception as e:
-                    logger.error(f"❌ [{self.debug_name}] Error analizando audio: {e}")
-                    
-        elif isinstance(frame, TextFrame):
-            logger.info(f"📝 [{self.debug_name}] TEXT: '{frame.text}'")
-            
-        return frame
+            except Exception as e:
+                logger.error(f"❌ [{stage}] Error analizando audio: {e}")
+                
+    elif isinstance(frame, TextFrame):
+        logger.info(f"📝 [{stage}] TEXT: '{frame.text}'")
 
 
 # ──────────────────────────────────────────
@@ -113,7 +101,7 @@ async def _voice_call(ws: WebSocket):
         )
         logger.info("✅ Groq Llama 70B LLM creado")
         
-        # ElevenLabs TTS con verificación
+        # ───── ElevenLabs TTS con verificación Y LOGS ─────
         elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
         voice_id = "ucWwAruuGtBeHfnAaKcJ"
         
@@ -123,7 +111,16 @@ async def _voice_call(ws: WebSocket):
             
         logger.info(f"🎵 Configurando ElevenLabs con voice_id: {voice_id}")
         
-        tts = ElevenLabsTTSService(
+        # Crear TTS con interceptor para debug
+        class ElevenLabsDebugWrapper(ElevenLabsTTSService):
+            async def run_tts(self, text: str) -> AsyncGenerator[bytes, None]:
+                logger.info(f"🎵 ElevenLabs generando audio para: '{text[:50]}...'")
+                async for audio_chunk in super().run_tts(text):
+                    logger.info(f"🔊 ElevenLabs chunk generado: {len(audio_chunk)} bytes")
+                    log_audio_debug(AudioRawFrame(audio_chunk, sample_rate=16000, user_audio=False), "ELEVENLABS-OUT")
+                    yield audio_chunk
+        
+        tts = ElevenLabsDebugWrapper(
             api_key=elevenlabs_api_key,
             voice_id=voice_id,
             # Configuraciones explícitas para compatibilidad con Twilio
@@ -131,7 +128,7 @@ async def _voice_call(ws: WebSocket):
             output_format="pcm_16000",
             sample_rate=16000
         )
-        logger.info("✅ ElevenLabs TTS creado")
+        logger.info("✅ ElevenLabs TTS creado con debug")
 
         # ───── CONTEXTO LLM ─────
         messages = [
@@ -153,8 +150,13 @@ async def _voice_call(ws: WebSocket):
         vad = SileroVADAnalyzer(sample_rate=SAMPLE_RATE)
         logger.info("✅ Silero VAD creado")
 
-        # ───── TRANSPORT CONFIGURADO PARA TWILIO ─────
-        transport = FastAPIWebsocketTransport(
+        # ───── TRANSPORT CON DEBUG ─────
+        class FastAPIWebsocketDebugTransport(FastAPIWebsocketTransport):
+            async def _handle_audio(self, frame: AudioRawFrame):
+                log_audio_debug(frame, "TRANSPORT-IN" if frame.user_audio else "TRANSPORT-OUT")
+                await super()._handle_audio(frame)
+                
+        transport = FastAPIWebsocketDebugTransport(
             websocket=ws,
             params=FastAPIWebsocketParams(
                 audio_in_enabled=True,
@@ -169,29 +171,19 @@ async def _voice_call(ws: WebSocket):
                 audio_out_channels=1,
             ),
         )
-        logger.info("✅ Transport creado")
+        logger.info("✅ Transport creado con debug")
 
-        # ───── PROCESADORES DEBUG ─────
-        debug_pre_stt = AudioDebugProcessor("PRE-STT")
-        debug_post_llm = AudioDebugProcessor("POST-LLM") 
-        debug_post_tts = AudioDebugProcessor("POST-TTS")
-        debug_pre_output = AudioDebugProcessor("PRE-OUTPUT")
-
-        # ───── PIPELINE GROQ + ELEVENLABS CON DEBUG ─────
+        # ───── PIPELINE SIMPLE SIN PROCESADORES DEBUG ─────
         pipeline = Pipeline([
             transport.input(),      # WebSocket Twilio
-            debug_pre_stt,         # DEBUG: Audio de entrada
             stt,                   # Groq Whisper
             ctx_aggr.user(),       # Contexto usuario
             llm,                   # Groq Llama 70B
-            debug_post_llm,        # DEBUG: Texto del LLM
-            tts,                   # ElevenLabs TTS
-            debug_post_tts,        # DEBUG: Audio del TTS
-            debug_pre_output,      # DEBUG: Audio antes de enviar
-            transport.output(),    # De vuelta a Twilio
+            tts,                   # ElevenLabs TTS (con debug interno)
+            transport.output(),    # De vuelta a Twilio (con debug interno)
             ctx_aggr.assistant(),  # Contexto asistente
         ])
-        logger.info("✅ Pipeline Groq + ElevenLabs creado CON DEBUG")
+        logger.info("✅ Pipeline Groq + ElevenLabs creado CON DEBUG INTEGRADO")
 
         # ───── TASK Y RUNNER ─────
         task = PipelineTask(
