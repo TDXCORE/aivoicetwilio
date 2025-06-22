@@ -1,6 +1,6 @@
 """
 bot.py – Pipecat + Twilio + FastAPI
-2025-06-21 - FIXED VERSION - Método Correcto para Enviar Texto
+2025-06-22 - SIMPLIFIED VERSION - Focus on Working Audio
 """
 
 # ───────────────────────────── Logger global ──────────────────────────────
@@ -61,61 +61,29 @@ from pipecatcloud.agent import WebSocketSessionArguments
 
 load_dotenv(override=True)
 
-# ───────────────────────────── Global State ──────────────────────────────
-call_state = {
-    "greeted": False,
-    "call_sid": None,
-    "stream_sid": None,
-    "participant_count": 0,
-    "audio_frames_received": 0,
-    "transcripts_received": 0,
-    "llm_responses_sent": 0,
-    "tts_responses_sent": 0,
-}
-
 # ───────────────────────────── Core WebSocket flow ───────────────────────
 async def main(ws: WebSocket) -> None:
     logger.info("🚀 Starting WebSocket bot")
     
     try:
-        # Primeros dos mensajes JSON de Twilio
-        logger.debug("📥 Waiting for Twilio handshake messages...")
+        # ───── SIMPLE TWILIO HANDSHAKE ─────
         start_iter = ws.iter_text()
-        handshake_msg = await start_iter.__anext__()
-        logger.debug(f"📨 Handshake message: {handshake_msg}")
+        handshake = await start_iter.__anext__()
+        logger.info(f"📨 Handshake: {handshake}")
         
-        call_data_raw = await start_iter.__anext__()
-        logger.debug(f"📨 Call data raw: {call_data_raw}")
-        call_data = json.loads(call_data_raw)
-        logger.debug(f"📊 Parsed call data: {json.dumps(call_data, indent=2)}")
+        start_msg = await start_iter.__anext__()
+        logger.info(f"📨 Start message: {start_msg}")
+        
+        start_data = json.loads(start_msg)
+        stream_sid = start_data["start"]["streamSid"]
+        call_sid = start_data["start"]["callSid"]
+        
+        logger.info(f"📞 CallSid: {call_sid}")
+        logger.info(f"📞 StreamSid: {stream_sid}")
 
-        stream_sid = call_data["start"]["streamSid"]
-        call_sid = call_data["start"]["callSid"]
+        # ───── CREAR SERVICIOS ─────
+        logger.info("🔧 Creating services...")
         
-        # Update global state
-        call_state["call_sid"] = call_sid
-        call_state["stream_sid"] = stream_sid
-        
-        logger.info(f"📞 Connected: CallSid={call_sid}, StreamSid={stream_sid}")
-
-        # Verificar variables de entorno
-        logger.debug("🔑 Checking environment variables...")
-        env_vars = {
-            "TWILIO_ACCOUNT_SID": os.getenv("TWILIO_ACCOUNT_SID"),
-            "TWILIO_AUTH_TOKEN": os.getenv("TWILIO_AUTH_TOKEN"),
-            "DEEPGRAM_API_KEY": os.getenv("DEEPGRAM_API_KEY"),
-            "OPENAI_API_KEY": os.getenv("OPENAI_API_KEY"),
-            "CARTESIA_API_KEY": os.getenv("CARTESIA_API_KEY"),
-        }
-        
-        for key, value in env_vars.items():
-            if value:
-                logger.debug(f"✅ {key}: {'*' * (len(value) - 4)}{value[-4:]}")
-            else:
-                logger.error(f"❌ {key}: NOT SET")
-
-        # Crear serializer
-        logger.debug("🔧 Creating Twilio serializer...")
         serializer = TwilioFrameSerializer(
             stream_sid=stream_sid,
             call_sid=call_sid,
@@ -123,8 +91,6 @@ async def main(ws: WebSocket) -> None:
             auth_token=os.getenv("TWILIO_AUTH_TOKEN", ""),
         )
 
-        # ───── Servicios STT / LLM / TTS (CREAR ANTES DEL TRANSPORT) ─────
-        logger.debug("🔧 Creating STT service...")
         stt = DeepgramSTTService(
             api_key=os.getenv("DEEPGRAM_API_KEY"),
             language="es",
@@ -132,64 +98,53 @@ async def main(ws: WebSocket) -> None:
             audio_passthrough=True,
         )
         
-        logger.debug("🔧 Creating LLM service...")
         llm = OpenAILLMService(
             api_key=os.getenv("OPENAI_API_KEY"), 
             model="gpt-4o-mini"
         )
         
-        logger.debug("🔧 Creating TTS service...")
         tts = CartesiaTTSService(
             api_key=os.getenv("CARTESIA_API_KEY"),
-            voice_id="15d0c2e2-8d29-44c3-be23-d585d5f154a1",
+            voice_id="15d0c2e8-9eb1-4d79-8b0e-c42d1b4e8b5e",  # Spanish voice
         )
 
-        # ───── Contexto inicial del chat ─────
-        logger.debug("🔧 Setting up LLM context...")
+        # ───── CONTEXTO LLM ─────
         messages = [
             {
                 "role": "system",
-                "content": (
-                    "Eres **Lorenzo**, SDR de TDX. Hablas siempre en español colombiano:\n"
-                    "1. Responde de forma natural y conversacional.\n"
-                    "2. Mantén respuestas cortas (máximo 2-3 oraciones).\n"
-                    "3. Sé amigable y profesional.\n"
-                    "4. Permite interrupciones naturales."
-                ),
+                "content": "Eres Lorenzo, un asistente de voz amigable. Responde en español de forma natural y breve."
             }
         ]
         context = OpenAILLMContext(messages, NOT_GIVEN)
         ctx_aggr = llm.create_context_aggregator(context)
 
-        # ───── CREAR TRANSPORT ─────
-        logger.debug("🔧 Creating FastAPI WebSocket transport...")
+        # ───── TRANSPORT SIN VAD PARA SIMPLIFICAR ─────
+        logger.info("🔧 Creating transport...")
         transport = FastAPIWebsocketTransport(
             websocket=ws,
             params=FastAPIWebsocketParams(
                 audio_in_enabled=True,
                 audio_out_enabled=True,
                 add_wav_header=False,
-                vad_analyzer=SileroVADAnalyzer(),
+                vad_analyzer=None,  # Sin VAD por ahora
                 serializer=serializer,
             ),
         )
 
-        # ───── CREAR PIPELINE ─────
-        logger.debug("🔧 Creating pipeline...")
-        pipeline = Pipeline(
-            [
-                transport.input(),
-                stt,
-                ctx_aggr.user(),
-                llm,
-                tts,
-                transport.output(),
-                ctx_aggr.assistant(),
-            ]
-        )
+        # ───── PIPELINE ─────
+        logger.info("🔧 Creating pipeline...")
+        pipeline = Pipeline([
+            transport.input(),
+            stt,
+            ctx_aggr.user(),
+            llm,
+            tts,
+            transport.output(),
+            ctx_aggr.assistant(),
+        ])
 
-        # ───── CREAR TASK ─────
-        logger.debug("🔧 Creating pipeline task...")
+        # ───── TASK ─────
+        logger.info("🔧 Creating task...")
         task = PipelineTask(
             pipeline,
             params=PipelineParams(
@@ -201,92 +156,37 @@ async def main(ws: WebSocket) -> None:
             ),
         )
 
-        # ───── FUNCIONES DE EVENT HANDLERS CON ACCESO A TASK ─────
-        async def on_client_connected(transport, client):
-            logger.info(f"👤 Client connected: {client}")
-            call_state["participant_count"] += 1
-            logger.info(f"👥 Total participants: {call_state['participant_count']}")
-            
-            # SALUDO USANDO EL MÉTODO CORRECTO
-            if not call_state["greeted"]:
-                logger.info("👋 Sending immediate greeting...")
-                await asyncio.sleep(0.5)
-                
-                # Crear TextFrame y enviarlo al pipeline
-                greeting_frame = TextFrame("¡Hola! Soy Lorenzo de TDX, ¿cómo estás?")
-                await task.queue_frame(greeting_frame)
-                
-                call_state["greeted"] = True
-                logger.info("✅ Greeting sent")
+        # ───── SALUDO SIMPLE DESPUÉS DE CREAR TASK ─────
+        async def send_greeting():
+            await asyncio.sleep(1)  # Wait for pipeline to be ready
+            logger.info("👋 Sending greeting...")
+            greeting = TextFrame("¡Hola! Soy Lorenzo, tu asistente de voz. ¿En qué puedo ayudarte?")
+            await task.queue_frame(greeting)
+            logger.info("✅ Greeting queued")
 
-        async def on_client_disconnected(transport, client):
-            logger.info(f"👤 Client disconnected: {client}")
-            call_state["participant_count"] -= 1
-            logger.info(f"👥 Total participants: {call_state['participant_count']}")
-            logger.info("🛑 Cancelling task due to client disconnect")
-            await task.cancel()
+        # Enviar saludo en background
+        asyncio.create_task(send_greeting())
 
-        async def on_user_started_speaking(transport, event):
-            logger.info("🎤 User started speaking")
-
-        async def on_user_stopped_speaking(transport, event):
-            logger.info("🔇 User stopped speaking")
-
-        async def on_frame(transport, frame):
-            if isinstance(frame, AudioRawFrame):
-                call_state["audio_frames_received"] += 1
-                if call_state["audio_frames_received"] % 100 == 0:
-                    logger.debug(f"🎵 Audio frames received: {call_state['audio_frames_received']}")
-            elif isinstance(frame, TextFrame):
-                logger.info(f"📝 Text frame: {frame.text}")
-            elif isinstance(frame, TranscriptionFrame):
-                call_state["transcripts_received"] += 1
-                logger.info(f"📝 Transcription #{call_state['transcripts_received']}: '{frame.text}'")
-            else:
-                logger.debug(f"📦 Frame received: {type(frame).__name__}")
-
-        # ───── REGISTRAR EVENT HANDLERS ─────
-        logger.debug("🔧 Registering transport event handlers...")
+        # ───── FUNCIÓN DE MONITOREO SIMPLE ─────
+        audio_count = 0
+        transcript_count = 0
         
-        # Estos son los eventos básicos que SÍ existen
-        transport.add_event_handler("on_client_connected", on_client_connected)
-        transport.add_event_handler("on_client_disconnected", on_client_disconnected)
-        
-        # Para eventos que pueden no existir, usar try/catch
-        try:
-            transport.add_event_handler("on_user_started_speaking", on_user_started_speaking)
-            transport.add_event_handler("on_user_stopped_speaking", on_user_stopped_speaking)
-            transport.add_event_handler("on_frame", on_frame)
-        except Exception as e:
-            logger.warning(f"⚠️ Could not register some event handlers: {e}")
+        async def monitor_stats():
+            nonlocal audio_count, transcript_count
+            while True:
+                await asyncio.sleep(5)
+                logger.info(f"📊 Audio frames: {audio_count}, Transcripts: {transcript_count}")
+
+        # Start monitoring
+        asyncio.create_task(monitor_stats())
 
         # ───── EJECUTAR PIPELINE ─────
-        logger.info("🚀 Starting pipeline runner...")
-        runner = PipelineRunner(handle_sigint=False, force_gc=True)
-        
-        # Stats logging task
-        async def log_stats():
-            while True:
-                await asyncio.sleep(10)  # Log stats every 10 seconds
-                logger.info(
-                    f"📊 Stats - Audio: {call_state['audio_frames_received']}, "
-                    f"Transcripts: {call_state['transcripts_received']}, "
-                    f"LLM: {call_state['llm_responses_sent']}, "
-                    f"TTS: {call_state['tts_responses_sent']}"
-                )
-        
-        # Start stats logging in background
-        stats_task = asyncio.create_task(log_stats())
-        
-        try:
-            await runner.run(task)
-        finally:
-            stats_task.cancel()
-            logger.info("🛑 Pipeline stopped")
+        logger.info("🚀 Starting pipeline...")
+        runner = PipelineRunner(handle_sigint=False)
+        await runner.run(task)
 
     except Exception as e:
-        logger.exception(f"💥 Pipeline crashed: {e}")
-        raise
+        logger.exception(f"💥 Pipeline error: {e}")
 
 # ───────────────────────────── SMS/WhatsApp webhook ──────────────────────
 async def handle_twilio_request(request: Request):
@@ -298,9 +198,8 @@ async def handle_twilio_request(request: Request):
         body = data.get("Body", "")
         from_n = data.get("From", "?")
         to_n = data.get("To", "?")
-        message_sid = data.get("MessageSid", "?")
         
-        logger.info(f"📱 SMS {message_sid} from {from_n} to {to_n}: '{body}'")
+        logger.info(f"📱 SMS from {from_n} to {to_n}: '{body}'")
 
         reply = f"Recibido: {body}"
         response = (
@@ -308,7 +207,6 @@ async def handle_twilio_request(request: Request):
             f'<Response><Message>{reply}</Message></Response>'
         )
         
-        logger.info(f"📤 SMS Response: {response}")
         return response
         
     except Exception as e:
@@ -320,44 +218,24 @@ async def handle_twilio_request(request: Request):
 
 # ───────────────────────────── Entry Point wrapper ───────────────────────
 async def bot(args: Union[WebSocketSessionArguments, WebSocket, Request]):
-    logger.info(f"🎯 Bot entry point - type: {type(args)}")
-    
-    # Reset call state for new session
-    call_state.update({
-        "greeted": False,
-        "call_sid": None,
-        "stream_sid": None,
-        "participant_count": 0,
-        "audio_frames_received": 0,
-        "transcripts_received": 0,
-        "llm_responses_sent": 0,
-        "tts_responses_sent": 0,
-    })
+    logger.info(f"🎯 Bot entry - type: {type(args)}")
 
     try:
         if isinstance(args, WebSocketSessionArguments):
-            logger.info("🔌 WebSocketSessionArguments branch")
             await main(args.websocket)
         elif isinstance(args, WebSocket):
-            logger.info("🔌 WebSocket branch")
             await main(args)
         elif isinstance(args, Request):
-            logger.info("📱 HTTP Request branch")
             return await handle_twilio_request(args)
         else:
-            logger.error(f"❌ Unsupported request type: {type(args)}")
-            raise ValueError(f"Unsupported request type: {type(args)}")
+            logger.error(f"❌ Unsupported type: {type(args)}")
             
     except Exception as e:
-        logger.exception(f"💥 Error in bot entry point: {e}")
+        logger.exception(f"💥 Error in bot entry: {e}")
         raise
 
 # ───────────────────────────── Health Check ──────────────────────────────
 async def health_check():
     """Simple health check endpoint"""
-    logger.info("🏥 Health check requested")
-    return {
-        "status": "healthy",
-        "timestamp": dt.datetime.now().isoformat(),
-        "call_state": call_state.copy()
-    }
+    logger.info("🏥 Health check")
+    return {"status": "healthy", "timestamp": dt.datetime.now().isoformat()}
