@@ -1,6 +1,6 @@
 """
 bot.py – Pipecat + Twilio + FastAPI
-2025-06-22 - SIMPLIFIED VERSION - Focus on Working Audio
+2025-06-22 - FINAL VERSION WITH WEBSOCKET DEBUG ACTIVATED
 """
 
 # ───────────────────────────── Logger global ──────────────────────────────
@@ -63,8 +63,8 @@ load_dotenv(override=True)
 
 # ───────────────────────────── Core WebSocket flow ───────────────────────
 async def main(ws: WebSocket) -> None:
-    logger.info("🚀 SIMPLIFIED VERSION 2.0 - Starting WebSocket bot")
-    logger.info("🔖 VERSION TIMESTAMP: 2025-06-22-01:05 - SIMPLIFIED AUDIO DEBUG")
+    logger.info("🚀 FINAL VERSION WITH DEBUG - Starting WebSocket bot")
+    logger.info("🔖 VERSION TIMESTAMP: 2025-06-22-02:45 - WEBSOCKET DEBUG ACTIVATED")
     
     try:
         # ───── SIMPLE TWILIO HANDSHAKE ─────
@@ -82,6 +82,17 @@ async def main(ws: WebSocket) -> None:
         # ───── DEBUGGING TWILIO STREAM ─────
         logger.info(f"📊 Start data keys: {list(start_data['start'].keys())}")
         logger.info(f"📊 Media format: {start_data['start'].get('mediaFormat', 'NOT_FOUND')}")
+        
+        # Check tracks configuration
+        tracks = start_data["start"].get("tracks", [])
+        logger.info(f"🎯 TRACKS CONFIGURED BY TWILIO: {tracks}")
+        
+        if "inbound" in tracks:
+            logger.info("✅ INBOUND TRACK DETECTED - Should receive audio from caller")
+        if "outbound" in tracks:
+            logger.info("✅ OUTBOUND TRACK DETECTED - Can send audio to caller")
+        if not tracks:
+            logger.warning("⚠️ NO TRACKS CONFIGURED - This might be the problem")
         
         # Log the complete start message for debugging
         logger.info(f"📊 Complete start data: {json.dumps(start_data, indent=2)}")
@@ -172,16 +183,20 @@ async def main(ws: WebSocket) -> None:
         # Enviar saludo en background
         asyncio.create_task(send_greeting())
 
-        # ───── ACTIVAR DEBUG DE WEBSOCKET PARA VER TODOS LOS MENSAJES ─────
+        # ───── WEBSOCKET DEBUG ACTIVADO ─────
         logger.info("🔍 ACTIVATING FULL WEBSOCKET DEBUG...")
         
         # Monitor raw WebSocket messages in background
+        audio_count = 0
+        transcript_count = 0
+        
         async def debug_websocket():
+            nonlocal audio_count, transcript_count
             try:
                 message_count = 0
                 async for raw_message in ws.iter_text():
                     message_count += 1
-                    logger.info(f"📨 WS Message #{message_count}: {raw_message[:500]}...")
+                    logger.info(f"📨 WS Message #{message_count}: {raw_message}")
                     
                     try:
                         msg = json.loads(raw_message)
@@ -189,35 +204,56 @@ async def main(ws: WebSocket) -> None:
                         logger.info(f"📨 Event type: {event_type}")
                         
                         if event_type == 'media':
-                            logger.info(f"🎵 AUDIO DATA RECEIVED! Details: {msg}")
-                            nonlocal audio_count
                             audio_count += 1
+                            media_data = msg.get('media', {})
+                            chunk = media_data.get('chunk', 'N/A')
+                            timestamp = media_data.get('timestamp', 'N/A')
+                            payload = media_data.get('payload', '')
+                            logger.info(f"🎵 AUDIO #{audio_count}: chunk={chunk}, ts={timestamp}, payload_len={len(payload)}")
+                            
+                            # Log every 10 audio messages
+                            if audio_count % 10 == 0:
+                                logger.info(f"🎵 Total audio messages received: {audio_count}")
+                                
                         elif event_type == 'start':
                             tracks = msg.get('start', {}).get('tracks', [])
                             logger.info(f"🎯 TRACKS CONFIGURED: {tracks}")
-                            if 'inbound' not in tracks and 'both_tracks' not in tracks:
-                                logger.error(f"❌ AUDIO TRACKS PROBLEM: {tracks}")
+                            if 'inbound' not in tracks:
+                                logger.error(f"❌ NO INBOUND TRACK - WON'T RECEIVE AUDIO: {tracks}")
+                            else:
+                                logger.info(f"✅ INBOUND TRACK OK - SHOULD RECEIVE AUDIO: {tracks}")
+                                
                         elif event_type == 'stop':
                             logger.info(f"🛑 Stream stopped: {msg}")
+                            break
+                            
+                        elif event_type == 'mark':
+                            mark_name = msg.get('mark', {}).get('name', 'unknown')
+                            logger.info(f"📍 Mark received: {mark_name}")
+                            
+                        else:
+                            logger.info(f"❓ Unknown event: {event_type} - {msg}")
                             
                     except json.JSONDecodeError:
                         logger.info(f"📨 Non-JSON message: {raw_message}")
                         
+                    # Safety exit
+                    if message_count > 1000:
+                        logger.warning("⚠️ Too many messages, stopping debug")
+                        break
+                        
             except Exception as e:
                 logger.error(f"💥 WebSocket debug error: {e}")
         
-        # Start WebSocket debugging - ACTIVAR PARA VER TODOS LOS MENSAJES
+        # ✅ ACTIVAR DEBUG - ESTO ES CRÍTICO PARA VER QUÉ PASA
         asyncio.create_task(debug_websocket())
         
         # ───── MONITOREO DE ESTADO ─────
-        audio_count = 0
-        transcript_count = 0
-        
         async def monitor_stats():
             nonlocal audio_count, transcript_count
             while True:
-                await asyncio.sleep(3)  # Every 3 seconds
-                logger.info(f"📊 Audio: {audio_count}, Transcripts: {transcript_count}")
+                await asyncio.sleep(5)  # Every 5 seconds
+                logger.info(f"📊 CURRENT STATS - Audio: {audio_count}, Transcripts: {transcript_count}")
                 
                 # Force garbage collection to see if it helps
                 import gc
