@@ -1,6 +1,6 @@
 """
 bot.py – Pipecat + Twilio + FastAPI
-2025-06-21 - FIXED VERSION - Event Handlers Before Transport
+2025-06-21 - FIXED VERSION - Método Correcto para Enviar Texto
 """
 
 # ───────────────────────────── Logger global ──────────────────────────────
@@ -54,6 +54,7 @@ from pipecat.frames.frames import (
     AudioRawFrame,
     TextFrame,
     TranscriptionFrame,
+    LLMMessagesFrame,
 )
 
 from pipecatcloud.agent import WebSocketSessionArguments
@@ -160,48 +161,7 @@ async def main(ws: WebSocket) -> None:
         context = OpenAILLMContext(messages, NOT_GIVEN)
         ctx_aggr = llm.create_context_aggregator(context)
 
-        # ───── VARIABLE PARA TASK (la necesitamos en los event handlers) ─────
-        task = None
-
-        # ───── FUNCIONES DE EVENT HANDLERS (DEFINIR ANTES DE USARLAS) ─────
-        async def on_client_connected(transport, client):
-            logger.info(f"👤 Client connected: {client}")
-            call_state["participant_count"] += 1
-            logger.info(f"👥 Total participants: {call_state['participant_count']}")
-            
-            # SALUDO INMEDIATO cuando se conecta el primer cliente
-            if not call_state["greeted"] and task:
-                logger.info("👋 Sending immediate greeting...")
-                await asyncio.sleep(0.5)  # Pequeño delay
-                await task.queue_text("¡Hola! Soy Lorenzo de TDX, ¿cómo estás?")
-                call_state["greeted"] = True
-                logger.info("✅ Greeting sent")
-
-        async def on_client_disconnected(transport, client):
-            logger.info(f"👤 Client disconnected: {client}")
-            call_state["participant_count"] -= 1
-            logger.info(f"👥 Total participants: {call_state['participant_count']}")
-            if task:
-                logger.info("🛑 Cancelling task due to client disconnect")
-                await task.cancel()
-
-        async def on_user_started_speaking(transport, event):
-            logger.info("🎤 User started speaking")
-
-        async def on_user_stopped_speaking(transport, event):
-            logger.info("🔇 User stopped speaking")
-
-        async def on_frame(transport, frame):
-            if isinstance(frame, AudioRawFrame):
-                call_state["audio_frames_received"] += 1
-                if call_state["audio_frames_received"] % 100 == 0:
-                    logger.debug(f"🎵 Audio frames received: {call_state['audio_frames_received']}")
-            elif isinstance(frame, TextFrame):
-                logger.info(f"📝 Text frame: {frame.text}")
-            else:
-                logger.debug(f"📦 Frame received: {type(frame).__name__}")
-
-        # ───── CREAR TRANSPORT CON VAD ─────
+        # ───── CREAR TRANSPORT ─────
         logger.debug("🔧 Creating FastAPI WebSocket transport...")
         transport = FastAPIWebsocketTransport(
             websocket=ws,
@@ -209,18 +169,10 @@ async def main(ws: WebSocket) -> None:
                 audio_in_enabled=True,
                 audio_out_enabled=True,
                 add_wav_header=False,
-                vad_analyzer=SileroVADAnalyzer(),  # Sin parámetros personalizados
+                vad_analyzer=SileroVADAnalyzer(),
                 serializer=serializer,
             ),
         )
-
-        # ───── REGISTRAR EVENT HANDLERS INMEDIATAMENTE ─────
-        logger.debug("🔧 Registering transport event handlers...")
-        transport.add_event_handler("on_client_connected", on_client_connected)
-        transport.add_event_handler("on_client_disconnected", on_client_disconnected) 
-        transport.add_event_handler("on_user_started_speaking", on_user_started_speaking)
-        transport.add_event_handler("on_user_stopped_speaking", on_user_stopped_speaking)
-        transport.add_event_handler("on_frame", on_frame)
 
         # ───── CREAR PIPELINE ─────
         logger.debug("🔧 Creating pipeline...")
@@ -248,6 +200,65 @@ async def main(ws: WebSocket) -> None:
                 enable_usage_metrics=True,
             ),
         )
+
+        # ───── FUNCIONES DE EVENT HANDLERS CON ACCESO A TASK ─────
+        async def on_client_connected(transport, client):
+            logger.info(f"👤 Client connected: {client}")
+            call_state["participant_count"] += 1
+            logger.info(f"👥 Total participants: {call_state['participant_count']}")
+            
+            # SALUDO USANDO EL MÉTODO CORRECTO
+            if not call_state["greeted"]:
+                logger.info("👋 Sending immediate greeting...")
+                await asyncio.sleep(0.5)
+                
+                # Crear TextFrame y enviarlo al pipeline
+                greeting_frame = TextFrame("¡Hola! Soy Lorenzo de TDX, ¿cómo estás?")
+                await task.queue_frame(greeting_frame)
+                
+                call_state["greeted"] = True
+                logger.info("✅ Greeting sent")
+
+        async def on_client_disconnected(transport, client):
+            logger.info(f"👤 Client disconnected: {client}")
+            call_state["participant_count"] -= 1
+            logger.info(f"👥 Total participants: {call_state['participant_count']}")
+            logger.info("🛑 Cancelling task due to client disconnect")
+            await task.cancel()
+
+        async def on_user_started_speaking(transport, event):
+            logger.info("🎤 User started speaking")
+
+        async def on_user_stopped_speaking(transport, event):
+            logger.info("🔇 User stopped speaking")
+
+        async def on_frame(transport, frame):
+            if isinstance(frame, AudioRawFrame):
+                call_state["audio_frames_received"] += 1
+                if call_state["audio_frames_received"] % 100 == 0:
+                    logger.debug(f"🎵 Audio frames received: {call_state['audio_frames_received']}")
+            elif isinstance(frame, TextFrame):
+                logger.info(f"📝 Text frame: {frame.text}")
+            elif isinstance(frame, TranscriptionFrame):
+                call_state["transcripts_received"] += 1
+                logger.info(f"📝 Transcription #{call_state['transcripts_received']}: '{frame.text}'")
+            else:
+                logger.debug(f"📦 Frame received: {type(frame).__name__}")
+
+        # ───── REGISTRAR EVENT HANDLERS ─────
+        logger.debug("🔧 Registering transport event handlers...")
+        
+        # Estos son los eventos básicos que SÍ existen
+        transport.add_event_handler("on_client_connected", on_client_connected)
+        transport.add_event_handler("on_client_disconnected", on_client_disconnected)
+        
+        # Para eventos que pueden no existir, usar try/catch
+        try:
+            transport.add_event_handler("on_user_started_speaking", on_user_started_speaking)
+            transport.add_event_handler("on_user_stopped_speaking", on_user_stopped_speaking)
+            transport.add_event_handler("on_frame", on_frame)
+        except Exception as e:
+            logger.warning(f"⚠️ Could not register some event handlers: {e}")
 
         # ───── EJECUTAR PIPELINE ─────
         logger.info("🚀 Starting pipeline runner...")
