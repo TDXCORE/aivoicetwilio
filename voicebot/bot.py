@@ -85,7 +85,8 @@ async def _voice_call(ws: WebSocket):
         # Usar una voz en español o compatible
         tts = CartesiaTTSService(
             api_key=cartesia_api_key,
-            voice_id="79a125e8-cd45-4c13-8a67-188112f4dd22",  # Spanish voice
+            voice_id="79a125e8-cd45-4c13-8a67-188112f4dd22",
+            stream_mode="chunked",  # Spanish voice
             # Sin parámetros adicionales - usar defaults de Pipecat
         )
         logger.info("✅ Cartesia TTS creado (optimizado para Pipecat)")
