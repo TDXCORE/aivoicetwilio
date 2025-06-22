@@ -63,7 +63,8 @@ load_dotenv(override=True)
 
 # ───────────────────────────── Core WebSocket flow ───────────────────────
 async def main(ws: WebSocket) -> None:
-    logger.info("🚀 Starting WebSocket bot")
+    logger.info("🚀 SIMPLIFIED VERSION 2.0 - Starting WebSocket bot")
+    logger.info("🔖 VERSION TIMESTAMP: 2025-06-22-01:05 - SIMPLIFIED AUDIO DEBUG")
     
     try:
         # ───── SIMPLE TWILIO HANDSHAKE ─────
@@ -78,8 +79,12 @@ async def main(ws: WebSocket) -> None:
         stream_sid = start_data["start"]["streamSid"]
         call_sid = start_data["start"]["callSid"]
         
-        logger.info(f"📞 CallSid: {call_sid}")
-        logger.info(f"📞 StreamSid: {stream_sid}")
+        # ───── DEBUGGING TWILIO STREAM ─────
+        logger.info(f"📊 Start data keys: {list(start_data['start'].keys())}")
+        logger.info(f"📊 Media format: {start_data['start'].get('mediaFormat', 'NOT_FOUND')}")
+        
+        # Log the complete start message for debugging
+        logger.info(f"📊 Complete start data: {json.dumps(start_data, indent=2)}")
 
         # ───── CREAR SERVICIOS ─────
         logger.info("🔧 Creating services...")
@@ -105,7 +110,7 @@ async def main(ws: WebSocket) -> None:
         
         tts = CartesiaTTSService(
             api_key=os.getenv("CARTESIA_API_KEY"),
-            voice_id="15d0c2e8-9eb1-4d79-8b0e-c42d1b4e8b5e",  # Spanish voice
+            voice_id="a0e99841-438c-4a64-b679-ae501e7d6091",  # Valid Cartesia voice
         )
 
         # ───── CONTEXTO LLM ─────
@@ -167,15 +172,49 @@ async def main(ws: WebSocket) -> None:
         # Enviar saludo en background
         asyncio.create_task(send_greeting())
 
-        # ───── FUNCIÓN DE MONITOREO SIMPLE ─────
+        # ───── FORZAR DEBUG DEL WEBSOCKET ─────
+        logger.info("🔍 Setting up WebSocket debugging...")
+        
+        # Monitor raw WebSocket messages in background
+        async def debug_websocket():
+            try:
+                message_count = 0
+                async for raw_message in ws.iter_text():
+                    message_count += 1
+                    logger.info(f"📨 WS Message #{message_count}: {raw_message[:300]}...")
+                    
+                    try:
+                        msg = json.loads(raw_message)
+                        event_type = msg.get('event', 'unknown')
+                        logger.info(f"📨 Event type: {event_type}")
+                        
+                        if event_type == 'media':
+                            logger.info(f"🎵 AUDIO DATA RECEIVED!")
+                            nonlocal audio_count
+                            audio_count += 1
+                            
+                    except json.JSONDecodeError:
+                        logger.info(f"📨 Non-JSON message: {raw_message}")
+                        
+            except Exception as e:
+                logger.error(f"💥 WebSocket debug error: {e}")
+        
+        # Start WebSocket debugging (this will consume the WebSocket)
+        # asyncio.create_task(debug_websocket())
+        
+        # ───── MONITOREO DE ESTADO ─────
         audio_count = 0
         transcript_count = 0
         
         async def monitor_stats():
             nonlocal audio_count, transcript_count
             while True:
-                await asyncio.sleep(5)
-                logger.info(f"📊 Audio frames: {audio_count}, Transcripts: {transcript_count}")
+                await asyncio.sleep(3)  # Every 3 seconds
+                logger.info(f"📊 Audio: {audio_count}, Transcripts: {transcript_count}")
+                
+                # Force garbage collection to see if it helps
+                import gc
+                gc.collect()
 
         # Start monitoring
         asyncio.create_task(monitor_stats())
