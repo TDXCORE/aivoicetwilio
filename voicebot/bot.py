@@ -1,83 +1,46 @@
-"""
-bot.py – Pipecat + Twilio + FastAPI
-2025-06-22 - PATCHED VERSION - Con sugerencias específicas
-"""
-
-# ───────────────────────────── Logger global ──────────────────────────────
-from loguru import logger
-import sys, os, datetime as dt
-
-logger.remove()
-logger.add(
-    sys.stderr,
-    level="DEBUG",  # DEBUG para ver todos los frames
-    format="[{time:HH:mm:ss.SSS}] {level} | {message}",
-)
-
-# ───────────────────────────── Imports Libs ──────────────────────────────
-import json, os, asyncio
+# voicebot/bot.py
+import os
+import asyncio
+import json
 from typing import Union
-
 from dotenv import load_dotenv
-from fastapi import Request, WebSocket
+from fastapi import WebSocket, Request, Response
+from loguru import logger
 
-from pipecat.audio.vad.silero import SileroVADAnalyzer, VADParams
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
-from pipecat.pipeline.task import PipelineParams, PipelineTask
-from pipecat.processors.aggregators.openai_llm_context import OpenAILLMContext
-from pipecat.processors.audio.audio_buffer_processor import AudioBufferProcessor
-from pipecat.processors.frame_processor import FrameProcessor, FrameDirection
-from openai._types import NOT_GIVEN
+from pipecat.pipeline.task import PipelineTask, PipelineParams
+from pipecat.transports.network.fastapi_websocket import (
+    FastAPIWebsocketTransport,
+    FastAPIWebsocketParams,
+)
 from pipecat.serializers.twilio import TwilioFrameSerializer
-from pipecat.services.cartesia.tts import CartesiaTTSService
+from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.services.deepgram.stt import DeepgramSTTService
 from pipecat.services.openai.llm import OpenAILLMService
-from pipecat.transports.network.fastapi_websocket import (
-    FastAPIWebsocketParams,
-    FastAPIWebsocketTransport,
-)
+from pipecat.services.cartesia.tts import CartesiaTTSService
+from pipecat.processors.aggregators.openai_llm_context import OpenAILLMContext
+from openai._types import NOT_GIVEN
 from pipecat.frames.frames import TextFrame
 
-from pipecatcloud.agent import WebSocketSessionArguments
-
+# Cargar variables de entorno
 load_dotenv(override=True)
 
-# ───────────────────────────── Spy Frame Processor ──────────────────────────────
-class Spy(FrameProcessor):
-    def __init__(self, label: str = "Spy"):
-        super().__init__()
-        self._name = label  # Usar atributo privado sin tocar property heredada
-        self.frame_count = 0
+SAMPLE_RATE = 8000  # Twilio Media Streams
 
-    async def process_frame(self, frame, direction: FrameDirection):
-        self.frame_count += 1
-        frame_type = type(frame).__name__
-        
-        # Log crítico para debugging
-        if frame_type in ["AudioRawFrame", "TextFrame", "TranscriptionFrame", "LLMMessagesFrame"]:
-            logger.info(f"🔍 {self._name} - {direction.name} #{self.frame_count}: {frame_type}")
-            
-            # Log contenido para frames importantes
-            if hasattr(frame, 'text') and frame.text:
-                logger.info(f"   📝 Content: '{frame.text[:100]}{'...' if len(str(frame.text)) > 100 else ''}'")
-            elif hasattr(frame, 'audio') and frame.audio:
-                logger.debug(f"   🎵 Audio: {len(frame.audio)} bytes")
-        else:
-            logger.debug(f"🔍 {self._name} - {direction.name} #{self.frame_count}: {frame_type}")
-        
-        await super().process_frame(frame, direction)
 
-# ───────────────────────────── Core WebSocket flow ───────────────────────
-async def main(ws: WebSocket) -> None:
-    logger.info("🚀 PATCHED VERSION - Con AudioBuffer y Silence Fix")
-    logger.info("🔖 VERSION: 2025-06-22-PATCHED")
+# ──────────────────────────────────────────
+# 1) PIPELINE PARA LLAMADAS DE VOZ (WebSocket)
+# ──────────────────────────────────────────
+async def _voice_call(ws: WebSocket):
+    """Maneja la conexión Media Streams de Twilio."""
+    logger.info("🎯 Iniciando pipeline de voz con Twilio handshake...")
     
     try:
-        # ───── TWILIO HANDSHAKE ─────
+        # ───── TWILIO HANDSHAKE (necesario para Media Streams) ─────
         start_iter = ws.iter_text()
-        await start_iter.__anext__()  # handshake
-        start_msg = await start_iter.__anext__()
+        await start_iter.__anext__()  # handshake message
+        start_msg = await start_iter.__anext__()  # start message
         start_data = json.loads(start_msg)
         
         stream_sid = start_data["start"]["streamSid"]
@@ -86,65 +49,60 @@ async def main(ws: WebSocket) -> None:
         logger.info(f"📞 CallSid: {call_sid}")
         logger.info(f"📞 StreamSid: {stream_sid}")
 
-        # ───── CREAR SERVICIOS ─────
+        # ───── SERIALIZER CON DATOS DE TWILIO ─────
         serializer = TwilioFrameSerializer(
             stream_sid=stream_sid,
             call_sid=call_sid,
             account_sid=os.getenv("TWILIO_ACCOUNT_SID", ""),
             auth_token=os.getenv("TWILIO_AUTH_TOKEN", ""),
         )
-        logger.info("✅ Twilio serializer created")
+        logger.info("✅ Twilio serializer creado")
 
+        # ───── SERVICIOS CON TUS API KEYS ─────
+        # Deepgram STT (tu preferido)
         stt = DeepgramSTTService(
             api_key=os.getenv("DEEPGRAM_API_KEY"),
             language="es",
-            sample_rate=8000,
+            sample_rate=SAMPLE_RATE,
             audio_passthrough=True,
         )
-        logger.info("✅ Deepgram STT created")
+        logger.info("✅ Deepgram STT creado")
         
+        # OpenAI LLM
         llm = OpenAILLMService(
             api_key=os.getenv("OPENAI_API_KEY"), 
             model="gpt-4o-mini"
         )
-        logger.info("✅ OpenAI LLM created")
+        logger.info("✅ OpenAI LLM creado")
         
-        # ───── TTS CON SILENCE FIX ─────
+        # Cartesia TTS (tu preferido)
         tts = CartesiaTTSService(
             api_key=os.getenv("CARTESIA_API_KEY"),
-            voice_id="a0e99841-438c-4a64-b679-ae501e7d6091",
-            push_silence_after_stop=True,  # 🔑 CLAVE: Cierra con silencio
+            voice_id="a0e99841-438c-4a64-b679-ae501e7d6091",  # Tu voz configurada
+            push_silence_after_stop=True,  # Fix para Twilio
         )
-        logger.info("✅ Cartesia TTS created with silence fix")
+        logger.info("✅ Cartesia TTS creado")
 
         # ───── CONTEXTO LLM ─────
         messages = [
             {
                 "role": "system",
-                "content": "Eres Lorenzo, un asistente de voz amigable de TDX. Responde en español de forma natural y breve. Máximo 2 oraciones por respuesta."
+                "content": (
+                    "Eres Lorenzo, un asistente de voz amigable de TDX. "
+                    "Responde en español de forma natural y breve. "
+                    "Máximo 2 oraciones por respuesta."
+                )
             }
         ]
         context = OpenAILLMContext(messages, NOT_GIVEN)
         ctx_aggr = llm.create_context_aggregator(context)
-        logger.info("✅ LLM context created")
+        logger.info("✅ LLM context creado")
 
-        # ───── AUDIO BUFFER PROCESSOR ─────
-        audiobuffer = AudioBufferProcessor(
-            user_continuous_stream=True  # 🔑 CLAVE: Stream continuo
-        )
-        logger.info("✅ Audio buffer processor created")
+        # ───── VAD SIMPLE (sin parámetros problemáticos) ─────
+        vad = SileroVADAnalyzer(sample_rate=SAMPLE_RATE)
+        logger.info("✅ Silero VAD creado")
 
-        # ───── TRANSPORT CON VAD OPTIMIZADO ─────
-        vad = SileroVADAnalyzer(
-            sample_rate=8000,
-            vad_params=VADParams(
-                speech_threshold=0.30,          # ≈ antes "threshold"
-                min_silence_duration_ms=300,    # tiempo de silencio
-                speech_pad_ms=150,              # padding opcional
-            ),
-            audio_passthrough=True,             # reenvía audio sin recortes
-        )
-        
+        # ───── TRANSPORT CONFIGURADO PARA TWILIO ─────
         transport = FastAPIWebsocketTransport(
             websocket=ws,
             params=FastAPIWebsocketParams(
@@ -155,150 +113,132 @@ async def main(ws: WebSocket) -> None:
                 serializer=serializer,
             ),
         )
-        logger.info("✅ Transport created with optimized VAD")
+        logger.info("✅ Transport creado")
 
-        # ───── PIPELINE CON SPY Y BUFFER ─────
+        # ───── PIPELINE LIMPIO ─────
         pipeline = Pipeline([
             transport.input(),
-            Spy("INPUT"),           # 🔍 Log frames entrantes
             stt,
             ctx_aggr.user(),
             llm,
             tts,
             transport.output(),
-            audiobuffer,            # 🔑 Buffer para stream continuo
-            Spy("OUTPUT"),          # 🔍 Log frames salientes
             ctx_aggr.assistant(),
         ])
-        logger.info("✅ Pipeline created with Spy processors and AudioBuffer")
+        logger.info("✅ Pipeline creado")
 
-        # ───── TASK ─────
+        # ───── TASK Y RUNNER ─────
         task = PipelineTask(
             pipeline,
             params=PipelineParams(
-                audio_in_sample_rate=8000,
-                audio_out_sample_rate=8000,
                 allow_interruptions=True,
+                audio_in_sample_rate=SAMPLE_RATE,
+                audio_out_sample_rate=SAMPLE_RATE,
                 enable_metrics=True,
             ),
         )
-        logger.info("✅ Pipeline task created")
+        
+        # ───── SALUDO AUTOMÁTICO ─────
+        async def send_greeting():
+            await asyncio.sleep(2)  # Esperar que el pipeline esté listo
+            logger.info("👋 Enviando saludo...")
+            greeting = TextFrame("¡Hola! Soy Lorenzo de TDX. ¿En qué puedo ayudarte hoy?")
+            await task.queue_frame(greeting)
+            logger.info("✅ Saludo enviado")
 
-        # ───── EVENT HANDLER PARA KICKOFF ─────
-        @transport.event_handler("on_client_connected")
-        async def _kickoff(transport_obj, client):
-            logger.info("🎬 Client connected - Starting audio buffer and seeding context")
-            
-            # Iniciar grabación del buffer
-            await audiobuffer.start_recording()
-            logger.info("🎙️ Audio buffer recording started")
-            
-            # Seed del contexto para arrancar el flujo
-            try:
-                context_frame = ctx_aggr.user().get_context_frame()
-                await task.queue_frames([context_frame])
-                logger.info("🌱 Context seeded")
-            except Exception as e:
-                logger.warning(f"⚠️ Context seeding error: {e}")
-            
-            # Saludo inicial después de un momento
-            async def delayed_greeting():
-                await asyncio.sleep(2)
-                logger.info("👋 Sending initial greeting...")
-                greeting = TextFrame("¡Hola! Soy Lorenzo de TDX. Ya estoy listo para conversar contigo.")
-                await task.queue_frame(greeting)
-                logger.info("✅ Greeting sent")
-            
-            asyncio.create_task(delayed_greeting())
-
-        # ───── MONITOREO CON FRAME COUNTING ─────
-        async def frame_monitor():
-            last_input_count = 0
-            last_output_count = 0
-            
-            while True:
-                await asyncio.sleep(15)  # Monitor cada 15 segundos
-                
-                # Obtener contadores de los Spy processors
-                input_spy = None
-                output_spy = None
-                
-                for processor in pipeline.processors:
-                    if isinstance(processor, Spy):
-                        if processor._name == "INPUT":
-                            input_spy = processor
-                        elif processor._name == "OUTPUT":
-                            output_spy = processor
-                
-                input_count = input_spy.frame_count if input_spy else 0
-                output_count = output_spy.frame_count if output_spy else 0
-                
-                logger.info(f"📊 FRAME MONITOR - Input: {input_count} | Output: {output_count}")
-                
-                # Detectar problemas
-                if input_count > last_input_count and output_count == last_output_count:
-                    logger.warning("⚠️ Input frames flowing but no output - pipeline may be stuck")
-                elif input_count == last_input_count and input_count > 0:
-                    logger.info("ℹ️ No new input frames - user may not be speaking")
-                
-                last_input_count = input_count
-                last_output_count = output_count
-
-        asyncio.create_task(frame_monitor())
+        asyncio.create_task(send_greeting())
 
         # ───── EJECUTAR PIPELINE ─────
-        logger.info("🚀 Starting patched pipeline with enhanced debugging...")
+        logger.info("🚀 Iniciando pipeline de voz...")
         runner = PipelineRunner(handle_sigint=False)
         await runner.run(task)
-
+        logger.info("📞 Llamada finalizada")
+        
     except Exception as e:
-        logger.exception(f"💥 Pipeline error: {e}")
+        logger.exception(f"💥 Error en pipeline de voz: {e}")
         raise
 
-# ───────────────────────────── SMS webhook ──────────────────────────────
-async def handle_twilio_request(request: Request):
-    logger.info("📱 SMS request received")
+
+# ──────────────────────────────────────────
+# 2) PIPELINE SMS / WHATSAPP (webhook HTTP)
+# ──────────────────────────────────────────
+async def _sms(request: Request) -> Response:
+    """Maneja mensajes SMS/WhatsApp de Twilio."""
     try:
-        data = await request.form()
-        body = data.get("Body", "")
-        from_n = data.get("From", "")
+        form = await request.form()
+        user_msg = form.get("Body", "") or "..."
+        from_number = form.get("From", "")
         
-        logger.info(f"📱 SMS from {from_n}: {body}")
+        logger.info(f"💬 SMS de {from_number}: '{user_msg}'")
+
+        # Usar OpenAI para respuesta rápida de texto
+        llm = OpenAILLMService(
+            api_key=os.getenv("OPENAI_API_KEY"),
+            model="gpt-4o-mini"
+        )
         
-        return (
-            f'<?xml version="1.0" encoding="UTF-8"?>'
-            f'<Response><Message>SMS recibido: {body}</Message></Response>'
-        )
+        # Contexto simple para SMS
+        context = OpenAILLMContext([
+            {
+                "role": "system", 
+                "content": "Eres Lorenzo, un asistente amigable de TDX. Responde de forma concisa en español."
+            },
+            {
+                "role": "user",
+                "content": user_msg
+            }
+        ], NOT_GIVEN)
+        
+        # Generar respuesta
+        response = await llm._process_context(context)
+        reply = response.choices[0].message.content
+        
+        logger.info(f"🤖 Respuesta SMS: '{reply}'")
+
+        # TwiML para responder
+        twiml = f'<?xml version="1.0" encoding="UTF-8"?><Response><Message>{reply}</Message></Response>'
+        return Response(content=twiml, media_type="text/xml")
+        
     except Exception as e:
-        logger.exception(f"💥 SMS error: {e}")
-        return (
-            f'<?xml version="1.0" encoding="UTF-8"?>'
-            f'<Response><Message>Error procesando SMS</Message></Response>'
-        )
+        logger.exception(f"💥 Error en SMS: {e}")
+        # Respuesta de error en TwiML
+        error_twiml = '<?xml version="1.0" encoding="UTF-8"?><Response><Message>Error procesando mensaje</Message></Response>'
+        return Response(content=error_twiml, media_type="text/xml")
 
-# ───────────────────────────── Entry Point ───────────────────────────────
-async def bot(args: Union[WebSocketSessionArguments, WebSocket, Request]):
-    logger.info(f"🎯 Bot called with: {type(args)}")
 
-    try:
-        if isinstance(args, WebSocketSessionArguments):
-            await main(args.websocket)
-        elif isinstance(args, WebSocket):
-            await main(args)
-        elif isinstance(args, Request):
-            return await handle_twilio_request(args)
-        else:
-            logger.error(f"❌ Unsupported argument type: {type(args)}")
-            
-    except Exception as e:
-        logger.exception(f"💥 Bot execution error: {e}")
-        raise
-
-# ───────────────────────────── Health Check ──────────────────────────────
+# ──────────────────────────────────────────
+# 3) HEALTH CHECK
+# ──────────────────────────────────────────
 async def health_check():
-    logger.info("🏥 Health check requested")
+    """Health check endpoint."""
+    logger.info("🏥 Health check")
     return {
         "status": "healthy", 
-        "timestamp": dt.datetime.now().isoformat(),
-        "version": "2025-06-22-PATCHED"
+        "service": "TDX Voice Bot",
+        "version": "2025-06-22-PLAN-B-FIXED",
+        "apis": {
+            "twilio": bool(os.getenv("TWILIO_ACCOUNT_SID")),
+            "openai": bool(os.getenv("OPENAI_API_KEY")),
+            "deepgram": bool(os.getenv("DEEPGRAM_API_KEY")),
+            "cartesia": bool(os.getenv("CARTESIA_API_KEY")),
+        }
     }
+
+
+# ──────────────────────────────────────────
+# 4) PUNTO ÚNICO DE ENTRADA (compatible con tu main.py)
+# ──────────────────────────────────────────
+async def bot(ctx):
+    """
+    Función principal que maneja tanto WebSocket (voz) como Request (SMS).
+    Compatible con tu main.py existente.
+    """
+    if isinstance(ctx, WebSocket):
+        logger.info("🗣️ Llamada de voz Twilio entrante")
+        await _voice_call(ctx)
+    elif isinstance(ctx, Request):
+        logger.info("💬 Mensaje SMS/WhatsApp entrante")
+        return await _sms(ctx)
+    else:
+        logger.error(f"❌ Tipo no soportado: {type(ctx)}")
+        raise TypeError("bot() sólo acepta WebSocket o Request de FastAPI")
