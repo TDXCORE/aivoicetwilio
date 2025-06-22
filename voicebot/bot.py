@@ -116,7 +116,7 @@ async def _voice_call(ws: WebSocket):
             api_key=elevenlabs_api_key,
             voice_id=voice_id,
             model="eleven_turbo_v2_5",
-            output_format="ulaw_8000",  # ← CLAVE: Formato μ-law 8kHz para Twilio
+            format="ulaw_8000",  # ← CLAVE: Formato μ-law 8kHz para Twilio
             sample_rate=8000            # ← Mismo sample rate que Twilio
         )
         logger.info("✅ ElevenLabs TTS creado con formato μ-law 8kHz (compatible con Twilio)")
@@ -148,6 +148,7 @@ async def _voice_call(ws: WebSocket):
                 audio_in_enabled=True,
                 audio_out_enabled=True,
                 add_wav_header=False,
+                audio_out_encoding="mulaw",
                 vad_analyzer=vad,
                 serializer=serializer,
                 # Configuraciones de audio para Twilio
