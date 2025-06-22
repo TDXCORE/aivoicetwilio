@@ -26,7 +26,7 @@ from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
 from pipecat.processors.aggregators.openai_llm_context import OpenAILLMContext
-from pipecat.processors.audio_buffer import AudioBufferProcessor
+from pipecat.processors.audio.audio_buffer_processor import AudioBufferProcessor
 from pipecat.processors.frame_processor import FrameProcessor, FrameDirection
 from openai._types import NOT_GIVEN
 from pipecat.serializers.twilio import TwilioFrameSerializer
@@ -181,7 +181,7 @@ async def main(ws: WebSocket) -> None:
 
         # ───── EVENT HANDLER PARA KICKOFF ─────
         @transport.event_handler("on_client_connected")
-        async def _kickoff(transport, client):
+        async def _kickoff(transport_obj, client):
             logger.info("🎬 Client connected - Starting audio buffer and seeding context")
             
             # Iniciar grabación del buffer
@@ -189,9 +189,12 @@ async def main(ws: WebSocket) -> None:
             logger.info("🎙️ Audio buffer recording started")
             
             # Seed del contexto para arrancar el flujo
-            context_frame = ctx_aggr.user().get_context_frame()
-            await task.queue_frames([context_frame])
-            logger.info("🌱 Context seeded")
+            try:
+                context_frame = ctx_aggr.user().get_context_frame()
+                await task.queue_frames([context_frame])
+                logger.info("🌱 Context seeded")
+            except Exception as e:
+                logger.warning(f"⚠️ Context seeding error: {e}")
             
             # Saludo inicial después de un momento
             async def delayed_greeting():
