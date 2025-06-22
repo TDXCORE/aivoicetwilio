@@ -19,7 +19,7 @@ from twilio.rest import Client
 load_dotenv()
 account_sid = os.getenv("TWILIO_ACCOUNT_SID")
 auth_token  = os.getenv("TWILIO_AUTH_TOKEN")
-CALL_SID    = "CA9060ece55c9461d9e5cf5f2925c5797b"   # ← cambia por el tuyo
+CALL_SID    = "CA6605929539d74599183414b10b3a6a3e"   # ← cambia por el tuyo
 
 client = Client(account_sid, auth_token)
 

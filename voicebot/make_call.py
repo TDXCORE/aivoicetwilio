@@ -13,15 +13,15 @@ auth_token = os.getenv('TWILIO_AUTH_TOKEN')
 twilio_number = os.getenv('TWILIO_PHONE_NUMBER')
 destination_number = os.getenv('DESTINATION_PHONE_NUMBER')
 
-# URL del TwiML App
-twiml_app_url = 'wss://aivoicetwilio-vf.onrender.com/ws'
+# ✅ USAR EL ENDPOINT DE TU SERVIDOR, NO TwiML INLINE
+twiml_url = 'https://aivoicetwilio-vf.onrender.com/voice-twiml'
 
 # Crear un cliente de Twilio
 client = Client(account_sid, auth_token)
 
-# Enviar una solicitud para iniciar una llamada
+# ✅ USAR URL EN LUGAR DE TwiML INLINE
 call = client.calls.create(
-    twiml=f"<Response><Connect><Stream url=\"{twiml_app_url}\"/></Connect></Response>",
+    url=twiml_url,  # ← CAMBIO CRÍTICO
     to=destination_number,
     from_=twilio_number
 )

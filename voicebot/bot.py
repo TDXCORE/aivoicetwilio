@@ -172,8 +172,8 @@ async def main(ws: WebSocket) -> None:
         # Enviar saludo en background
         asyncio.create_task(send_greeting())
 
-        # ───── FORZAR DEBUG DEL WEBSOCKET ─────
-        logger.info("🔍 Setting up WebSocket debugging...")
+        # ───── ACTIVAR DEBUG DE WEBSOCKET PARA VER TODOS LOS MENSAJES ─────
+        logger.info("🔍 ACTIVATING FULL WEBSOCKET DEBUG...")
         
         # Monitor raw WebSocket messages in background
         async def debug_websocket():
@@ -181,7 +181,7 @@ async def main(ws: WebSocket) -> None:
                 message_count = 0
                 async for raw_message in ws.iter_text():
                     message_count += 1
-                    logger.info(f"📨 WS Message #{message_count}: {raw_message[:300]}...")
+                    logger.info(f"📨 WS Message #{message_count}: {raw_message[:500]}...")
                     
                     try:
                         msg = json.loads(raw_message)
@@ -189,9 +189,16 @@ async def main(ws: WebSocket) -> None:
                         logger.info(f"📨 Event type: {event_type}")
                         
                         if event_type == 'media':
-                            logger.info(f"🎵 AUDIO DATA RECEIVED!")
+                            logger.info(f"🎵 AUDIO DATA RECEIVED! Details: {msg}")
                             nonlocal audio_count
                             audio_count += 1
+                        elif event_type == 'start':
+                            tracks = msg.get('start', {}).get('tracks', [])
+                            logger.info(f"🎯 TRACKS CONFIGURED: {tracks}")
+                            if 'inbound' not in tracks and 'both_tracks' not in tracks:
+                                logger.error(f"❌ AUDIO TRACKS PROBLEM: {tracks}")
+                        elif event_type == 'stop':
+                            logger.info(f"🛑 Stream stopped: {msg}")
                             
                     except json.JSONDecodeError:
                         logger.info(f"📨 Non-JSON message: {raw_message}")
@@ -199,8 +206,8 @@ async def main(ws: WebSocket) -> None:
             except Exception as e:
                 logger.error(f"💥 WebSocket debug error: {e}")
         
-        # Start WebSocket debugging (this will consume the WebSocket)
-        # asyncio.create_task(debug_websocket())
+        # Start WebSocket debugging - ACTIVAR PARA VER TODOS LOS MENSAJES
+        asyncio.create_task(debug_websocket())
         
         # ───── MONITOREO DE ESTADO ─────
         audio_count = 0
