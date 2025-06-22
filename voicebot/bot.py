@@ -101,7 +101,7 @@ async def _voice_call(ws: WebSocket):
         )
         logger.info("✅ Groq Llama 70B LLM creado")
         
-        # ───── ElevenLabs TTS con configuración básica ─────
+        # ───── ElevenLabs TTS con formato correcto para Twilio ─────
         elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
         voice_id = "ucWwAruuGtBeHfnAaKcJ"
         
@@ -111,15 +111,15 @@ async def _voice_call(ws: WebSocket):
             
         logger.info(f"🎵 Configurando ElevenLabs con voice_id: {voice_id}")
         
-        # Configuración más básica y compatible
+        # SOLUCIÓN: Usar formato μ-law compatible con Twilio
         tts = ElevenLabsTTSService(
             api_key=elevenlabs_api_key,
             voice_id=voice_id,
-            # Usar configuraciones por defecto más compatibles
-            model="eleven_monolingual_v1",  # Modelo más estable
-            # No especificar output_format ni sample_rate para usar defaults
+            model="eleven_turbo_v2_5",
+            output_format="ulaw_8000",  # ← CLAVE: Formato μ-law 8kHz para Twilio
+            sample_rate=8000            # ← Mismo sample rate que Twilio
         )
-        logger.info("✅ ElevenLabs TTS creado con configuración básica")
+        logger.info("✅ ElevenLabs TTS creado con formato μ-law 8kHz (compatible con Twilio)")
 
         # ───── CONTEXTO LLM ─────
         messages = [
