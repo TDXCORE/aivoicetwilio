@@ -34,9 +34,9 @@ SAMPLE_RATE = 8000  # Twilio Media Streams
 # CLASE DEBUG PARA MONITOREAR AUDIO
 # ──────────────────────────────────────────
 class AudioDebugProcessor(FrameProcessor):
-    def __init__(self, name: str):
+    def __init__(self, debug_name: str):
         super().__init__()
-        self.name = name
+        self.debug_name = debug_name
         self.audio_in_count = 0
         self.audio_out_count = 0
         
@@ -44,7 +44,7 @@ class AudioDebugProcessor(FrameProcessor):
         if isinstance(frame, AudioRawFrame):
             if frame.user_audio:
                 self.audio_in_count += 1
-                logger.info(f"🎤 [{self.name}] AUDIO IN #{self.audio_in_count}: {len(frame.audio)} bytes, rate: {frame.sample_rate}Hz")
+                logger.info(f"🎤 [{self.debug_name}] AUDIO IN #{self.audio_in_count}: {len(frame.audio)} bytes, rate: {frame.sample_rate}Hz")
             else:
                 self.audio_out_count += 1
                 # Analizar el contenido del audio
@@ -52,17 +52,17 @@ class AudioDebugProcessor(FrameProcessor):
                     audio_array = np.frombuffer(frame.audio, dtype=np.int16)
                     max_amp = np.max(np.abs(audio_array)) if len(audio_array) > 0 else 0
                     rms = np.sqrt(np.mean(audio_array.astype(np.float32) ** 2)) if len(audio_array) > 0 else 0
-                    logger.info(f"🔊 [{self.name}] AUDIO OUT #{self.audio_out_count}: {len(frame.audio)} bytes, rate: {frame.sample_rate}Hz, max_amp: {max_amp}, rms: {rms:.2f}")
+                    logger.info(f"🔊 [{self.debug_name}] AUDIO OUT #{self.audio_out_count}: {len(frame.audio)} bytes, rate: {frame.sample_rate}Hz, max_amp: {max_amp}, rms: {rms:.2f}")
                     
                     # Detectar si el audio está silencioso
                     if max_amp < 100:
-                        logger.warning(f"⚠️  [{self.name}] Audio parece estar muy silencioso (max_amp: {max_amp})")
+                        logger.warning(f"⚠️  [{self.debug_name}] Audio parece estar muy silencioso (max_amp: {max_amp})")
                         
                 except Exception as e:
-                    logger.error(f"❌ [{self.name}] Error analizando audio: {e}")
+                    logger.error(f"❌ [{self.debug_name}] Error analizando audio: {e}")
                     
         elif isinstance(frame, TextFrame):
-            logger.info(f"📝 [{self.name}] TEXT: '{frame.text}'")
+            logger.info(f"📝 [{self.debug_name}] TEXT: '{frame.text}'")
             
         return frame
 
