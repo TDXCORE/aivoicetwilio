@@ -29,6 +29,7 @@ import numpy as np
 load_dotenv(override=True)
 
 SAMPLE_RATE = 8000  # Twilio Media Streams
+FRAME_SIZE  = 160  
 
 # ──────────────────────────────────────────
 # FUNCIÓN DEBUG SIMPLE PARA LOGS
@@ -117,7 +118,8 @@ async def _voice_call(ws: WebSocket):
             voice_id=voice_id,
             model="eleven_turbo_v2_5",
             format="ulaw_8000",  # ← CLAVE: Formato μ-law 8kHz para Twilio
-            sample_rate=8000            # ← Mismo sample rate que Twilio
+            sample_rate=8000,
+            chunk_size=FRAME_SIZE,            # ← Mismo sample rate que Twilio
         )
         logger.info("✅ ElevenLabs TTS creado con formato μ-law 8kHz (compatible con Twilio)")
 
