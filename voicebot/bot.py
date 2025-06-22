@@ -22,6 +22,7 @@ from dotenv import load_dotenv
 from fastapi import Request, WebSocket
 
 from pipecat.audio.vad.silero import SileroVADAnalyzer
+from pipecat.audio.vad.vad_analyzer import VADParams
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
@@ -137,9 +138,12 @@ async def main(ws: WebSocket) -> None:
         # ───── TRANSPORT CON VAD OPTIMIZADO ─────
         vad = SileroVADAnalyzer(
             sample_rate=8000,
-            speech_threshold=0.3,  # Nuevo parámetro en 0.0.71
-            min_speech_duration_ms=200,  # Más sensible
-            min_silence_duration_ms=300   # Menos tiempo de silencio
+            params=VADParams(
+                confidence=0.3,     # Más sensible (default 0.7)
+                start_secs=0.1,     # Detecta habla más rápido (default 0.2)
+                stop_secs=0.5,      # Menos silencio para parar (default 0.8)
+                min_volume=0.4      # Volumen mínimo más bajo (default 0.6)
+            )
         )
         
         transport = FastAPIWebsocketTransport(
