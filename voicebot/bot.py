@@ -21,12 +21,50 @@ from pipecat.services.groq.llm import GroqLLMService
 from pipecat.services.elevenlabs.tts import ElevenLabsTTSService
 from pipecat.processors.aggregators.openai_llm_context import OpenAILLMContext
 from openai._types import NOT_GIVEN
-from pipecat.frames.frames import TextFrame
+from pipecat.frames.frames import TextFrame, AudioRawFrame, Frame
+from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
+import numpy as np
 
 # Cargar variables de entorno
 load_dotenv(override=True)
 
 SAMPLE_RATE = 8000  # Twilio Media Streams
+
+# ──────────────────────────────────────────
+# CLASE DEBUG PARA MONITOREAR AUDIO
+# ──────────────────────────────────────────
+class AudioDebugProcessor(FrameProcessor):
+    def __init__(self, name: str):
+        super().__init__()
+        self.name = name
+        self.audio_in_count = 0
+        self.audio_out_count = 0
+        
+    async def process_frame(self, frame: Frame, direction: FrameDirection) -> Frame:
+        if isinstance(frame, AudioRawFrame):
+            if frame.user_audio:
+                self.audio_in_count += 1
+                logger.info(f"🎤 [{self.name}] AUDIO IN #{self.audio_in_count}: {len(frame.audio)} bytes, rate: {frame.sample_rate}Hz")
+            else:
+                self.audio_out_count += 1
+                # Analizar el contenido del audio
+                try:
+                    audio_array = np.frombuffer(frame.audio, dtype=np.int16)
+                    max_amp = np.max(np.abs(audio_array)) if len(audio_array) > 0 else 0
+                    rms = np.sqrt(np.mean(audio_array.astype(np.float32) ** 2)) if len(audio_array) > 0 else 0
+                    logger.info(f"🔊 [{self.name}] AUDIO OUT #{self.audio_out_count}: {len(frame.audio)} bytes, rate: {frame.sample_rate}Hz, max_amp: {max_amp}, rms: {rms:.2f}")
+                    
+                    # Detectar si el audio está silencioso
+                    if max_amp < 100:
+                        logger.warning(f"⚠️  [{self.name}] Audio parece estar muy silencioso (max_amp: {max_amp})")
+                        
+                except Exception as e:
+                    logger.error(f"❌ [{self.name}] Error analizando audio: {e}")
+                    
+        elif isinstance(frame, TextFrame):
+            logger.info(f"📝 [{self.name}] TEXT: '{frame.text}'")
+            
+        return frame
 
 
 # ──────────────────────────────────────────
@@ -75,10 +113,23 @@ async def _voice_call(ws: WebSocket):
         )
         logger.info("✅ Groq Llama 70B LLM creado")
         
-        # ElevenLabs TTS con tu voice ID
+        # ElevenLabs TTS con verificación
+        elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
+        voice_id = "ucWwAruuGtBeHfnAaKcJ"
+        
+        if not elevenlabs_api_key:
+            logger.error("❌ ELEVENLABS_API_KEY no configurada")
+            raise ValueError("ELEVENLABS_API_KEY requerida")
+            
+        logger.info(f"🎵 Configurando ElevenLabs con voice_id: {voice_id}")
+        
         tts = ElevenLabsTTSService(
-            api_key=os.getenv("ELEVENLABS_API_KEY"),
-            voice_id="ucWwAruuGtBeHfnAaKcJ"  # Tu voice ID específico
+            api_key=elevenlabs_api_key,
+            voice_id=voice_id,
+            # Configuraciones explícitas para compatibilidad con Twilio
+            model="eleven_turbo_v2_5",
+            output_format="pcm_16000",
+            sample_rate=16000
         )
         logger.info("✅ ElevenLabs TTS creado")
 
@@ -111,21 +162,36 @@ async def _voice_call(ws: WebSocket):
                 add_wav_header=False,
                 vad_analyzer=vad,
                 serializer=serializer,
+                # Configuraciones de audio para Twilio
+                audio_in_sample_rate=SAMPLE_RATE,
+                audio_out_sample_rate=SAMPLE_RATE,
+                audio_in_channels=1,
+                audio_out_channels=1,
             ),
         )
         logger.info("✅ Transport creado")
 
-        # ───── PIPELINE GROQ + ELEVENLABS ─────
+        # ───── PROCESADORES DEBUG ─────
+        debug_pre_stt = AudioDebugProcessor("PRE-STT")
+        debug_post_llm = AudioDebugProcessor("POST-LLM") 
+        debug_post_tts = AudioDebugProcessor("POST-TTS")
+        debug_pre_output = AudioDebugProcessor("PRE-OUTPUT")
+
+        # ───── PIPELINE GROQ + ELEVENLABS CON DEBUG ─────
         pipeline = Pipeline([
             transport.input(),      # WebSocket Twilio
+            debug_pre_stt,         # DEBUG: Audio de entrada
             stt,                   # Groq Whisper
             ctx_aggr.user(),       # Contexto usuario
             llm,                   # Groq Llama 70B
+            debug_post_llm,        # DEBUG: Texto del LLM
             tts,                   # ElevenLabs TTS
+            debug_post_tts,        # DEBUG: Audio del TTS
+            debug_pre_output,      # DEBUG: Audio antes de enviar
             transport.output(),    # De vuelta a Twilio
             ctx_aggr.assistant(),  # Contexto asistente
         ])
-        logger.info("✅ Pipeline Groq + ElevenLabs creado")
+        logger.info("✅ Pipeline Groq + ElevenLabs creado CON DEBUG")
 
         # ───── TASK Y RUNNER ─────
         task = PipelineTask(
@@ -135,16 +201,26 @@ async def _voice_call(ws: WebSocket):
                 audio_in_sample_rate=SAMPLE_RATE,
                 audio_out_sample_rate=SAMPLE_RATE,
                 enable_metrics=True,
+                # Configuraciones adicionales para audio
+                audio_out_enabled=True,
+                audio_in_enabled=True,
             ),
         )
         
-        # ───── SALUDO AUTOMÁTICO ─────
+        # ───── SALUDO AUTOMÁTICO CON DEBUG ─────
         async def send_greeting():
             await asyncio.sleep(3)  # Esperar conexión estable
             logger.info("👋 Enviando saludo Groq + ElevenLabs...")
-            greeting = TextFrame("¡Hola! Soy Lorenzo de TDX. Ahora uso Groq y ElevenLabs para una experiencia mejorada. ¿En qué puedo ayudarte?")
+            greeting = TextFrame("¡Hola! Soy Lorenzo de TDX. ¿Me escuchas bien?")
             await task.queue_frame(greeting)
             logger.info("✅ Saludo Groq + ElevenLabs enviado")
+            
+            # Segundo mensaje de prueba para debug
+            await asyncio.sleep(5)
+            logger.info("🔧 Enviando mensaje de prueba...")
+            test_msg = TextFrame("Este es un mensaje de prueba para verificar que el audio funciona correctamente.")
+            await task.queue_frame(test_msg)
+            logger.info("✅ Mensaje de prueba enviado")
 
         asyncio.create_task(send_greeting())
 
@@ -160,7 +236,7 @@ async def _voice_call(ws: WebSocket):
 
 
 # ──────────────────────────────────────────
-# 2) PIPELINE SMS / WHATSAPP (webhook HTTP)
+# 2) PIPELINE SMS / WHATSAPP (webhook HTTP) - SIN CAMBIOS
 # ──────────────────────────────────────────
 async def _sms(request: Request) -> Response:
     """Maneja mensajes SMS/WhatsApp de Twilio - Groq LLM."""
@@ -207,7 +283,7 @@ async def _sms(request: Request) -> Response:
 
 
 # ──────────────────────────────────────────
-# 3) HEALTH CHECK
+# 3) HEALTH CHECK - SIN CAMBIOS
 # ──────────────────────────────────────────
 async def health_check():
     """Health check endpoint."""
@@ -215,7 +291,7 @@ async def health_check():
     return {
         "status": "healthy", 
         "service": "TDX Voice Bot - Groq + ElevenLabs",
-        "version": "2025-06-22-GROQ-ELEVENLABS",
+        "version": "2025-06-22-GROQ-ELEVENLABS-DEBUG",
         "apis": {
             "groq": bool(os.getenv("GROQ_API_KEY")),
             "elevenlabs": bool(os.getenv("ELEVENLABS_API_KEY")),
@@ -230,7 +306,7 @@ async def health_check():
 
 
 # ──────────────────────────────────────────
-# 4) PUNTO ÚNICO DE ENTRADA (compatible con tu main.py)
+# 4) PUNTO ÚNICO DE ENTRADA - SIN CAMBIOS
 # ──────────────────────────────────────────
 async def bot(ctx):
     """
