@@ -89,6 +89,7 @@ async def _voice_call(ws: WebSocket):
             output_format="ulaw_8000",   # ← formato 8 kHz μ-law
             sample_rate=8000,            # ← asegura la frecuencia correcta
             stream_mode="chunked",
+            chunk_ms=20, 
             # Sin parámetros adicionales - usar defaults de Pipecat
         )
         logger.info("✅ Cartesia TTS creado (optimizado para Pipecat)")
