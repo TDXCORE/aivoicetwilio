@@ -59,14 +59,18 @@ async def _voice_call(ws: WebSocket):
         logger.info("✅ Twilio serializer creado")
 
         # ───── SERVICIOS CON TUS API KEYS ─────
-        # Deepgram STT (tu preferido)
+        # Deepgram STT mejorado para español
         stt = DeepgramSTTService(
             api_key=os.getenv("DEEPGRAM_API_KEY"),
             language="es",
             sample_rate=SAMPLE_RATE,
             audio_passthrough=True,
+            model="nova-2",              # Modelo más reciente
+            smart_format=True,           # Mejora la transcripción
+            interim_results=True,        # Resultados parciales
+            endpointing=300,             # 300ms para finalizar
         )
-        logger.info("✅ Deepgram STT creado")
+        logger.info("✅ Deepgram STT mejorado creado")
         
         # OpenAI LLM
         llm = OpenAILLMService(
@@ -140,9 +144,9 @@ async def _voice_call(ws: WebSocket):
         
         # ───── SALUDO AUTOMÁTICO ─────
         async def send_greeting():
-            await asyncio.sleep(2)  # Esperar que el pipeline esté listo
+            await asyncio.sleep(3)  # Más tiempo para asegurar conexión
             logger.info("👋 Enviando saludo...")
-            greeting = TextFrame("¡Hola! Soy Lorenzo de TDX. ¿En qué puedo ayudarte hoy?")
+            greeting = TextFrame("¡Hola! Soy Lorenzo de TDX. Te escucho perfectamente. Puedes hablar ahora.")
             await task.queue_frame(greeting)
             logger.info("✅ Saludo enviado")
 
