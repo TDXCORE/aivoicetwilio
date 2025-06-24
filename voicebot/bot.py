@@ -63,12 +63,10 @@ async def _voice_call(ws: WebSocket):
                 audio_out_enabled=True,
                 add_wav_header=False,
                 vad_analyzer=SileroVADAnalyzer(
-                    sample_rate=8000,
-                    params={
-                        "confidence": 0.6,  # Menos restrictivo
-                        "start_secs": 0.1,  # Más sensible
-                        "stop_secs": 0.5,   # Menos restrictivo
-                    }
+                        sample_rate=8000,
+                        confidence=0.6,
+                        start_secs=0.1,
+                        stop_secs=0.5,
                 ),  # SIN parámetros extras
                 serializer=serializer,
                 # REMOVIDO: audio_out_sample_rate, buffering, etc.
