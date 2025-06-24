@@ -56,19 +56,19 @@ async def _voice_call(ws: WebSocket):
         )
         logger.info("✅ Twilio serializer creado")
 
-        # ───── VAD CONFIGURADO CORRECTAMENTE ─────
+        # ───── VAD CONFIGURADO MÁS SENSIBLE ─────
         vad_analyzer = SileroVADAnalyzer(
             sample_rate=8000,
             params=VADParams(
-                confidence=0.7,
-                start_secs=0.2,
-                stop_secs=0.5,
-                min_volume=0.6
+                confidence=0.5,      # Más sensible (era 0.7)
+                start_secs=0.1,      # Más rápido (era 0.2)
+                stop_secs=0.3,       # Menos restrictivo (era 0.5)
+                min_volume=0.4       # Más sensible (era 0.6)
             )
         )
-        logger.info("✅ Silero VAD creado con parámetros optimizados")
+        logger.info("✅ Silero VAD creado con parámetros más sensibles")
 
-        # ───── TRANSPORT CON CONFIGURACIÓN CORRECTA ─────
+        # ───── TRANSPORT CON CONFIGURACIÓN MEJORADA ─────
         transport = FastAPIWebsocketTransport(
             websocket=ws,
             params=FastAPIWebsocketParams(
@@ -81,15 +81,32 @@ async def _voice_call(ws: WebSocket):
                 audio_out_sample_rate=8000,
             ),
         )
-        logger.info("✅ Transport creado (configuración correcta)")
+        logger.info("✅ Transport creado (configuración mejorada)")
 
-        # ───── DEEPGRAM STT CONFIGURACIÓN SIMPLE ─────
-        stt = DeepgramSTTService(
+        # ───── DEEPGRAM STT CON DEBUGGING ─────
+        class DeepgramSTTDebug(DeepgramSTTService):
+            async def process_frame(self, frame, direction):
+                result = await super().process_frame(frame, direction)
+                if result:
+                    # Log todos los frames que llegan
+                    logger.info(f"🎤 FRAME STT: {type(result)} - {result}")
+                    # Si es transcripción, loggear el texto
+                    if hasattr(result, 'text') and result.text:
+                        logger.info(f"🎤 TRANSCRIPCIÓN: '{result.text}'")
+                    # También verificar si es lista de frames
+                    elif hasattr(result, '__iter__'):
+                        for r in result:
+                            if hasattr(r, 'text') and r.text:
+                                logger.info(f"🎤 TRANSCRIPCIÓN (lista): '{r.text}'")
+                return result
+
+        stt = DeepgramSTTDebug(
             api_key=os.getenv("DEEPGRAM_API_KEY"),
             model="nova-2-general",
             language="es",
+            audio_passthrough=True,  # Ayuda con la conectividad
         )
-        logger.info("✅ Deepgram STT creado (configuración simple)")
+        logger.info("✅ Deepgram STT creado con debugging")
         
         # ───── GROQ LLM ─────
         llm = GroqLLMService(
@@ -111,7 +128,7 @@ async def _voice_call(ws: WebSocket):
         )
         logger.info("✅ Cartesia TTS creado (velocidad optimizada)")
 
-        # ───── CONTEXTO LLM ─────
+        # ───── CONTEXTO LLM MEJORADO ─────
         messages = [
             {
                 "role": "system",
@@ -123,7 +140,8 @@ PERSONALIDAD Y TONO:
 - Ritmo: ~130 palabras/min, pausas cortas
 - Escucha activa: refleja las ideas del prospecto
 - Máximo 2 oraciones por respuesta para mantener fluidez
-- Tono relajado y con mucha confianza.
+- Tono relajado y con mucha confianza
+- Siempre mantener la conversación activa y natural
 
 OBJETIVO DE LA LLAMADA:
 1) Descubrir dolores críticos del líder de tecnología
@@ -132,7 +150,7 @@ OBJETIVO DE LA LLAMADA:
 
 GUION A SEGUIR:
 
-APERTURA (usar SOLO después de que el prospecto hable primero y si aun el bot no ha saludado):
+APERTURA (usar SOLO después de que el prospecto hable primero):
 "Buen día, le habla Freddy, de TDX. ¿Cómo está? Lo estoy contactando porque estamos ayudando a líderes de tecnología a reducir en un treinta por ciento el tiempo que sus equipos dedican a tareas repetitivas y a acelerar la salida de prototipos. ¿Es un tema que está en su radar en este momento?"
 
 DESCUBRIMIENTO (usar estas preguntas según el flujo):
@@ -149,11 +167,18 @@ SOLUCIONES TDX (mapear directamente al dolor identificado):
 CIERRE:
 "Dado que identificamos [mencionar el dolor principal del prospecto], propongo una sesión de descubrimiento de veinticinco minutos. Allí podemos revisar a detalle sus flujos y le mostraré un caso real de TDX, similar al suyo, donde logramos resultados tangibles. ¿Le iría bien este jueves a las diez a.m. o prefiere el viernes a primera hora?"
 
+MANEJO DE INTERRUPCIONES Y PREGUNTAS:
+- Si me interrumpen mientras hablo, parar inmediatamente y escuchar completamente
+- Si el usuario hace preguntas no relacionadas con ventas, responder brevemente y profesionalmente, luego redirigir suavemente al objetivo
+- Si el usuario cambia de tema, seguir la conversación naturalmente y buscar oportunidades para volver al discovery
+- Si no entiendo una transcripción o está incompleta, preguntar cortésmente: "No logré escucharlo bien, ¿podría repetir por favor?"
+- Si hay silencio prolongado, hacer una pregunta abierta para reactivar la conversación
+- Si el usuario dice "Hola" múltiples veces, reconocer que ya me presenté y continuar
+- Nunca quedarme completamente callado, siempre mantener la conversación activa
+
 INSTRUCCIONES CRÍTICAS:
-- Si me interrumpen mientras hablo, parar inmediatamente y escuchar
-- Si el usuario dice "Hola" múltiples veces, reconocer que ya me presenté
-- Mantener el flujo natural de la conversación sin repetir la apertura
-- Si ya hice la apertura, continuar con descubrimiento según la respuesta
+- SIEMPRE responder a cualquier input del usuario, sin excepción
+- Si recibo un mensaje vacío o poco claro, responder: "¿Me puede repetir eso por favor?"
 - NO responder hasta que recibas un mensaje del usuario
 - Solo responder cuando el cliente haya hablado primero
 - Seguir el guion paso a paso después de que el cliente hable
@@ -161,14 +186,16 @@ INSTRUCCIONES CRÍTICAS:
 - Siempre buscar agendar la reunión
 - Usar vocabulario formal-colombiano: "cuello de botella", "amarres", "quitarse de encima"
 - Respuestas máximo 2 oraciones para mantener fluidez
-- No incluir caracteres especiales en las respuestas ya que se convertirán a audio"""
+- No incluir caracteres especiales en las respuestas ya que se convertirán a audio
+- Ser adaptable y conversacional, mantener el flujo natural
+- Si el usuario habla en inglés, responder en español cortésmente"""
             }
         ]
         
         # ───── CONTEXTO ─────
         context = OpenAILLMContext(messages)
         context_aggregator = llm.create_context_aggregator(context)
-        logger.info("✅ Contexto de ventas B2B creado")
+        logger.info("✅ Contexto de ventas B2B mejorado")
 
         # ───── PIPELINE ─────
         pipeline = Pipeline([
@@ -182,7 +209,7 @@ INSTRUCCIONES CRÍTICAS:
         ])
         logger.info("✅ Pipeline creado")
 
-        # ───── TASK CON PARÁMETROS CORRECTOS ─────
+        # ───── TASK CON PARÁMETROS OPTIMIZADOS ─────
         task = PipelineTask(
             pipeline,
             params=PipelineParams(
@@ -194,7 +221,7 @@ INSTRUCCIONES CRÍTICAS:
             ),
         )
         
-        # ───── EVENTOS DE TRANSPORTE CORREGIDOS ─────        
+        # ───── EVENTOS DE TRANSPORTE ─────        
         @transport.event_handler("on_client_connected")
         async def on_client_connected(transport, client):
             logger.info(f"🔗 Cliente conectado: {client}")
@@ -205,8 +232,17 @@ INSTRUCCIONES CRÍTICAS:
             logger.info(f"👋 Cliente desconectado: {client}")
             await task.cancel()
 
+        # ───── EVENTOS ADICIONALES PARA DEBUGGING ─────
+        @transport.event_handler("on_audio_stream_started")
+        async def on_audio_stream_started(transport):
+            logger.info("🎵 Audio stream iniciado")
+
+        @transport.event_handler("on_audio_stream_stopped")
+        async def on_audio_stream_stopped(transport):
+            logger.info("🔇 Audio stream detenido")
+
         # ───── EJECUTAR RUNNER ─────
-        logger.info("🚀 Iniciando pipeline de ventas B2B...")
+        logger.info("🚀 Iniciando pipeline de ventas B2B mejorado...")
         runner = PipelineRunner(handle_sigint=False, force_gc=True)
         await runner.run(task)
         logger.info("📞 Llamada de ventas finalizada")
@@ -271,7 +307,7 @@ async def health_check():
     return {
         "status": "healthy", 
         "service": "TDX Sales Bot - Deepgram + Groq + Cartesia",
-        "version": "2025-06-24-SALES-B2B-CORREGIDO",
+        "version": "2025-06-24-SALES-B2B-MEJORADO",
         "apis": {
             "deepgram": bool(os.getenv("DEEPGRAM_API_KEY")),
             "groq": bool(os.getenv("GROQ_API_KEY")),
@@ -279,8 +315,8 @@ async def health_check():
             "twilio": bool(os.getenv("TWILIO_ACCOUNT_SID")),
         },
         "services": {
-            "stt": "Deepgram Nova-2 Simple",
-            "llm": "Groq Llama 3.3 70B", 
+            "stt": "Deepgram Nova-2 con Debugging",
+            "llm": "Groq Llama 3.3 70B Mejorado", 
             "tts": "Cartesia optimizado",
             "purpose": "Sales Development Representative (SDR)"
         }
