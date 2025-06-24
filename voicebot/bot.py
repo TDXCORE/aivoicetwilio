@@ -58,17 +58,20 @@ async def _voice_call(ws: WebSocket):
         logger.info("✅ Twilio serializer creado")
 
         # ───── SERVICIOS DEEPGRAM + GROQ + CARTESIA ─────
-        # Deepgram STT
+        # Deepgram STT optimizado para llamadas B2B
         stt = DeepgramSTTService(
             api_key=os.getenv("DEEPGRAM_API_KEY"),
-            model="nova-2-phonecall",
-            language="es-419",
-            filler_words=True,
-            profanity_filter=True,
-            smart_format=True,
-            punctuate=True,
-            numerals=True,
-            sample_rate=SAMPLE_RATE
+            model="nova-2-phonecall",  # Optimizado para llamadas telefónicas
+            language="es-419",         # Español latinoamericano
+            smart_format=True,         # Auto-formateo profesional
+            punctuate=True,           # Puntuación automática
+            numerals=True,            # "quince" → "15"
+            filler_words=False,       # Sin "eh", "um" para mayor claridad
+            profanity_filter=True,    # Filtro de groserías
+            sample_rate=SAMPLE_RATE,
+            # Parámetros para fluidez en ventas
+            interim_results=True,     # Resultados preliminares
+            endpointing_ms=15,        # Detección más rápida de fin de frase
         )
         logger.info("✅ Deepgram STT creado")
         
@@ -87,40 +90,77 @@ async def _voice_call(ws: WebSocket):
             
         logger.info("🎵 Configurando Cartesia TTS...")
         
-        # Usar una voz en español o compatible
+        # Usar voz profesional en español
         tts = CartesiaTTSService(
             api_key=cartesia_api_key,
-            voice_id="308c82e1-ecef-48fc-b9f2-2b5298629789",
-            output_format="ulaw_8000",   # ← formato 8 kHz μ-law
-            sample_rate=8000,            # ← asegura la frecuencia correcta
+            voice_id="308c82e1-ecef-48fc-b9f2-2b5298629789",  # Voz profesional
+            output_format="ulaw_8000",
+            sample_rate=8000,
             stream_mode="chunked",
-            chunk_ms=20, 
-            # Sin parámetros adicionales - usar defaults de Pipecat
+            chunk_ms=15,  # Chunks más pequeños para mayor fluidez
         )
         logger.info("✅ Cartesia TTS creado (optimizado para Pipecat)")
 
-        # ───── CONTEXTO LLM ─────
+        # ───── CONTEXTO LLM PARA VENTAS B2B ─────
         messages = [
             {
                 "role": "system",
-                "content": (
-                    "Eres Lorenzo, un asistente de voz amigable de TDX. "
-                    "Responde en español de forma natural y breve. "
-                    "Máximo 2 oraciones por respuesta. "
-                    "Tu salida será convertida a audio, así que no incluyas caracteres especiales. "
-                    "Siempre confirma que escuchaste al usuario."
-                )
+                "content": """Eres Freddy, SDR (Sales Development Representative) de TDX, empresa colombiana de soluciones de IA conversacional y automatización.
+
+PERSONALIDAD Y TONO:
+- Formal-amigable, colombiano profesional
+- Sin muletillas coloquiales excesivas ni groserías
+- Ritmo: ~130 palabras/min, pausas cortas
+- Escucha activa: refleja las ideas del prospecto
+- Máximo 2 oraciones por respuesta para mantener fluidez
+
+OBJETIVO DE LA LLAMADA:
+1) Descubrir dolores críticos del líder de tecnología
+2) Mapearlos a las soluciones de TDX  
+3) Concretar reunión de exploración (20-30 min)
+
+GUION A SEGUIR:
+
+APERTURA (usar SOLO después de que el prospecto hable primero):
+"Buen día, le habla Freddy, de TDX. Lo estoy contactando porque estamos ayudando a líderes de tecnología a reducir en un 30% el tiempo que sus equipos dedican a tareas repetitivas y a acelerar la salida de prototipos. ¿Es un tema que está en su radar en este momento?"
+
+DESCUBRIMIENTO (usar estas preguntas según el flujo):
+- "Entendiendo ese desafío de las tareas repetitivas, ¿en qué procesos específicos su equipo de TI experimenta hoy más **cuellos de botella** por tickets o llamadas que les quitan foco?"
+- "Pensando en la agilidad, cuando necesitan lanzar un prototipo o MVP, ¿cuánto tiempo les toma hoy realmente sacarlo a producción y llevarlo al usuario final?"
+- "Hablando de eficiencia, ¿sus sistemas como CRM/ERP y canales como WhatsApp o voz conversan de forma fluida, o su equipo debe hacer muchos **amarres manuales** para que funcionen juntos?"
+
+SOLUCIONES TDX (mapear directamente al dolor identificado):
+- Para **cuellos de botella** en soporte: "Justamente para liberar esa carga, TDX implementa **AI Chatbot Multiagente** o **AI Voice Assistant**; estas soluciones toman el 80% de las interacciones repetitivas."
+- Para **tareas repetitivas**: "Para **quitarse de encima** esas labores que consumen tiempo valioso, utilizamos **Flujos de Automatización** y nuestro **AgentOps Framework**, optimizando procesos end-to-end."
+- Para la **velocidad de lanzamiento de MVPs**: "Si el desafío es la agilidad, con **MVP en 15 días** y nuestra oferta de **SaaS Agentic**, podemos acelerar significativamente la puesta en marcha de sus innovaciones."
+- Para **amarres manuales** y **sistemas desintegrados**: "Si la fricción está en la integración, nuestra **Integración con CRM/ERP** y el **AI Assistant para WhatsApp** permiten una conectividad perfecta y eliminan esos procesos manuales."
+
+CIERRE:
+"Dado que identificamos (mencionar el dolor principal del prospecto), propongo una sesión de descubrimiento de 25 minutos. Allí podemos revisar a detalle sus flujos y le mostraré un caso real de TDX, similar al suyo, donde logramos resultados tangibles. ¿Le iría bien este jueves a las 10 a.m. o prefiere el viernes a primera hora?"
+
+INSTRUCCIONES CRÍTICAS:
+- NUNCA saludar hasta que el prospecto hable primero
+- Seguir el guion paso a paso
+- Escuchar 70%, hablar 30%
+- Siempre buscar agendar la reunión
+- Usar vocabulario formal-colombiano: "cuello de botella", "amarres", "quitarse de encima"
+- Respuestas máximo 2 oraciones para mantener fluidez"""
             }
         ]
         context = OpenAILLMContext(messages, NOT_GIVEN)
         ctx_aggr = llm.create_context_aggregator(context)
-        logger.info("✅ Groq context creado")
+        logger.info("✅ Contexto de ventas B2B creado")
 
-        # ───── VAD SIMPLE ─────
-        vad = SileroVADAnalyzer(sample_rate=SAMPLE_RATE)
-        logger.info("✅ Silero VAD creado")
+        # ───── VAD OPTIMIZADO PARA VENTAS ─────
+        vad = SileroVADAnalyzer(
+            sample_rate=SAMPLE_RATE,
+            min_volume=0.7,        # Más sensible para captar mejor
+            min_confidence=0.8,    # Mayor precisión
+            min_quiet_frames=8,    # Detección más rápida de pausas
+        )
+        logger.info("✅ Silero VAD optimizado creado")
 
-        # ───── TRANSPORT SIMPLE (como en el ejemplo de Pipecat) ─────
+        # ───── TRANSPORT OPTIMIZADO ─────
         transport = FastAPIWebsocketTransport(
             websocket=ws,
             params=FastAPIWebsocketParams(
@@ -130,69 +170,73 @@ async def _voice_call(ws: WebSocket):
                 vad_analyzer=vad,
                 serializer=serializer,
                 audio_out_sample_rate=8000,
-                # Sin especificar sample rates - usar defaults
             ),
         )
         logger.info("✅ Transport creado")
 
-        # ───── PIPELINE DEEPGRAM + GROQ + CARTESIA (simple y efectivo) ─────
+        # ───── PIPELINE OPTIMIZADO PARA VENTAS ─────
         pipeline = Pipeline([
             transport.input(),      # WebSocket Twilio
-            stt,                   # Deepgram STT
+            stt,                   # Deepgram STT optimizado
             ctx_aggr.user(),       # Contexto usuario
-            llm,                   # Groq Llama 70B
-            tts,                   # Cartesia TTS
+            llm,                   # Groq Llama con prompt de ventas
+            tts,                   # Cartesia TTS profesional
             transport.output(),    # De vuelta a Twilio
             ctx_aggr.assistant(),  # Contexto asistente
         ])
-        logger.info("✅ Pipeline Deepgram + Groq + Cartesia creado")
+        logger.info("✅ Pipeline optimizado para ventas creado")
 
-        # ───── TASK CON PARÁMETROS SIMPLES ─────
+        # ───── TASK CON INTERRUPCIONES OPTIMIZADAS ─────
         task = PipelineTask(
             pipeline,
             params=PipelineParams(
                 allow_interruptions=True,
-                audio_in_sample_rate=8000,    # Twilio standard
-                audio_out_sample_rate=8000,   # Twilio standard
+                audio_in_sample_rate=8000,
+                audio_out_sample_rate=8000,
                 enable_metrics=True,
             ),
         )
         
         # ───── EVENTOS DE TRANSPORTE ─────
+        user_has_spoken = False  # Flag para detectar si el usuario ya habló
+        
         @transport.event_handler("on_client_connected")
         async def on_client_connected(transport, client):
             logger.info(f"🔗 Cliente conectado: {client}")
-            # Iniciar conversación con saludo
+            # NO enviar saludo automático - esperar a que el usuario hable primero
             await task.queue_frames([ctx_aggr.user().get_context_frame()])
 
         @transport.event_handler("on_client_disconnected")
         async def on_client_disconnected(transport, client):
             logger.info(f"👋 Cliente desconectado: {client}")
             await task.cancel()
-        
-        # ───── SALUDO AUTOMÁTICO ─────
-        async def send_greeting():
-            await asyncio.sleep(2)  # Esperar conexión estable
-            logger.info("👋 Enviando saludo...")
-            greeting = TextFrame("¡Hola! Soy Lorenzo de TDX. Ahora uso Deepgram y Cartesia para una experiencia de audio mejorada. ¿En qué puedo ayudarte?")
-            await task.queue_frame(greeting)
-            logger.info("✅ Saludo enviado")
 
-        asyncio.create_task(send_greeting())
+        # ───── MANEJO ESPECIAL DEL PRIMER SALUDO ─────
+        async def handle_first_user_input():
+            nonlocal user_has_spoken
+            if not user_has_spoken:
+                user_has_spoken = True
+                logger.info("👋 Usuario habló primero - activando saludo profesional")
+                # El LLM ya tiene el contexto para dar el saludo según el script
+        
+        # Monitor para detectar la primera entrada del usuario
+        @transport.event_handler("on_first_user_started_speaking")
+        async def on_first_user_speaking(transport):
+            await handle_first_user_input()
 
         # ───── EJECUTAR PIPELINE ─────
-        logger.info("🚀 Iniciando pipeline Deepgram + Groq + Cartesia...")
+        logger.info("🚀 Iniciando pipeline de ventas B2B...")
         runner = PipelineRunner(handle_sigint=False)
         await runner.run(task)
-        logger.info("📞 Llamada Deepgram + Groq + Cartesia finalizada")
+        logger.info("📞 Llamada de ventas finalizada")
         
     except Exception as e:
-        logger.exception(f"💥 Error en pipeline Deepgram + Groq + Cartesia: {e}")
+        logger.exception(f"💥 Error en pipeline de ventas: {e}")
         raise
 
 
 # ──────────────────────────────────────────
-# 2) PIPELINE SMS / WHATSAPP (webhook HTTP) - SIN CAMBIOS
+# 2) PIPELINE SMS / WHATSAPP (webhook HTTP)
 # ──────────────────────────────────────────
 async def _sms(request: Request) -> Response:
     """Maneja mensajes SMS/WhatsApp de Twilio - Groq LLM."""
@@ -213,7 +257,7 @@ async def _sms(request: Request) -> Response:
         context = OpenAILLMContext([
             {
                 "role": "system", 
-                "content": "Eres Lorenzo, un asistente amigable de TDX. Responde de forma concisa en español."
+                "content": "Eres Freddy, SDR de TDX. Responde de forma concisa y profesional en español. Enfócate en agendar una reunión para mostrar nuestras soluciones de IA conversacional."
             },
             {
                 "role": "user",
@@ -225,15 +269,14 @@ async def _sms(request: Request) -> Response:
         response = await llm._process_context(context)
         reply = response.choices[0].message.content
         
-        logger.info(f"🤖 Respuesta SMS Groq: '{reply}'")
+        logger.info(f"🤖 Respuesta SMS: '{reply}'")
 
         # TwiML para responder
         twiml = f'<?xml version="1.0" encoding="UTF-8"?><Response><Message>{reply}</Message></Response>'
         return Response(content=twiml, media_type="text/xml")
         
     except Exception as e:
-        logger.exception(f"💥 Error en SMS Groq: {e}")
-        # Respuesta de error en TwiML
+        logger.exception(f"💥 Error en SMS: {e}")
         error_twiml = '<?xml version="1.0" encoding="UTF-8"?><Response><Message>Error procesando mensaje</Message></Response>'
         return Response(content=error_twiml, media_type="text/xml")
 
@@ -243,11 +286,11 @@ async def _sms(request: Request) -> Response:
 # ──────────────────────────────────────────
 async def health_check():
     """Health check endpoint."""
-    logger.info("🏥 Health check Deepgram + Groq + Cartesia")
+    logger.info("🏥 Health check Pipeline de Ventas B2B")
     return {
         "status": "healthy", 
-        "service": "TDX Voice Bot - Deepgram + Groq + Cartesia",
-        "version": "2025-06-24-DEEPGRAM-GROQ-CARTESIA",
+        "service": "TDX Sales Bot - Deepgram + Groq + Cartesia",
+        "version": "2025-06-24-SALES-B2B-OPTIMIZED",
         "apis": {
             "deepgram": bool(os.getenv("DEEPGRAM_API_KEY")),
             "groq": bool(os.getenv("GROQ_API_KEY")),
@@ -255,9 +298,10 @@ async def health_check():
             "twilio": bool(os.getenv("TWILIO_ACCOUNT_SID")),
         },
         "services": {
-            "stt": "Deepgram Nova-2",
-            "llm": "Groq Llama 3.3 70B", 
-            "tts": "Cartesia (Spanish voice)"
+            "stt": "Deepgram Nova-2 Phonecall",
+            "llm": "Groq Llama 3.3 70B con Script de Ventas", 
+            "tts": "Cartesia Voz Profesional",
+            "purpose": "Sales Development Representative (SDR)"
         }
     }
 
@@ -267,14 +311,14 @@ async def health_check():
 # ──────────────────────────────────────────
 async def bot(ctx):
     """
-    Función principal Deepgram + Groq + Cartesia.
+    Función principal para Sales Bot B2B.
     Compatible con tu main.py existente.
     """
     if isinstance(ctx, WebSocket):
-        logger.info("🗣️ Llamada de voz Twilio → Deepgram + Groq + Cartesia Stack")
+        logger.info("📞 Llamada de ventas → Freddy SDR de TDX")
         await _voice_call(ctx)
     elif isinstance(ctx, Request):
-        logger.info("💬 Mensaje SMS/WhatsApp → Groq")
+        logger.info("💬 Mensaje SMS/WhatsApp → Freddy SDR")
         return await _sms(ctx)
     else:
         logger.error(f"❌ Tipo no soportado: {type(ctx)}")
