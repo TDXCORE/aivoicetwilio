@@ -17,11 +17,10 @@ async def websocket_endpoint(ws: WebSocket):
 # ───────── TwiML de VOZ ─────────
 VOICE_TWIML = """
 <Response>
- <Start>
-    <Stream url="wss://aivoicetwilio-vf.onrender.com/ws"
-            track="both_tracks"/>
-  </Start>
- <Pause length="3600"/>
+  <Connect>
+    <Stream url="wss://aivoicetwilio-vf.onrender.com/ws"></Stream>
+  </Connect>
+  <Pause length="40"/>
 </Response>
 """.strip()
 
