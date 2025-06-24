@@ -62,7 +62,14 @@ async def _voice_call(ws: WebSocket):
                 audio_in_enabled=True,
                 audio_out_enabled=True,
                 add_wav_header=False,
-                vad_analyzer=SileroVADAnalyzer(),  # SIN parámetros extras
+                vad_analyzer=SileroVADAnalyzer(
+                    sample_rate=8000,
+                    params={
+                        "confidence": 0.6,  # Menos restrictivo
+                        "start_secs": 0.1,  # Más sensible
+                        "stop_secs": 0.5,   # Menos restrictivo
+                    }
+                ),  # SIN parámetros extras
                 serializer=serializer,
                 # REMOVIDO: audio_out_sample_rate, buffering, etc.
             ),
@@ -74,7 +81,9 @@ async def _voice_call(ws: WebSocket):
         stt = DeepgramSTTService(
             api_key=os.getenv("DEEPGRAM_API_KEY"),
             model="nova-2-general",    
-            language="es",             
+            language="es",  
+            audio_passthrough=False,  # ← AGREGAR esto
+            keep_alive=True,  # ← AGREGAR esto           
             # REMOVIDO: smart_format, punctuate, sample_rate
         )
         logger.info("✅ Deepgram STT creado")
@@ -123,7 +132,10 @@ OBJETIVO DE LA LLAMADA:
 GUION A SEGUIR:
 
 APERTURA (usar SOLO después de que el prospecto hable primero y si aun el bot no ha saludado):
-"Buen día, le habla Freddy, de TDX. Lo estoy contactando porque estamos ayudando a líderes de tecnología a **reducir en un treinta por ciento** el tiempo que sus equipos dedican a tareas repetitivas y a acelerar la salida de prototipos. ¿Es un tema que está en su radar en este momento?"
+"Buen día, le habla Freddy, de TDX. como estas hoy?" 
+
+Luego de que el cliente responda, continuar con:
+Lo estoy contactando porque estamos ayudando a líderes de tecnología a **reducir en un treinta por ciento** el tiempo que sus equipos dedican a tareas repetitivas y a acelerar la salida de prototipos. ¿Es un tema que está en su radar en este momento?"
 
 DESCUBRIMIENTO (usar estas preguntas según el flujo):
 - "Entendiendo ese desafío de las tareas repetitivas, ¿en qué procesos específicos su equipo de TI experimenta hoy más **cuellos de botella** por tickets o llamadas que les quitan foco?"
@@ -188,7 +200,8 @@ INSTRUCCIONES CRÍTICAS:
         # ───── EVENTOS SIMPLES (COMO EL EJEMPLO) ─────        
         @transport.event_handler("on_client_connected")
         async def on_client_connected(transport, client):
-            logger.info(f"🔗 Cliente conectado: {client}")
+            logger.info(f"🔗 Cliente conectado: {client}"),
+        await task.queue_frames([context_aggregator.user().get_context_frame()])
             
          
 
