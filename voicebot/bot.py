@@ -1,4 +1,3 @@
-# voicebot/bot.py
 import os
 import asyncio
 import json
@@ -137,12 +136,7 @@ OBJETIVO DE LA LLAMADA:
 GUION A SEGUIR:
 
 APERTURA (usar SOLO después de que el prospecto hable primero):
-"Buen día, le habla Laura, de TDX. ¿Cómo está? 
-
-(esperar respuesta)
-
-INTRODUCCION:
-Lo estoy contactando porque estamos ayudando a líderes de tecnología a reducir en un treinta por ciento el tiempo que sus equipos dedican a tareas repetitivas y a acelerar la salida de prototipos. ¿Es un tema que está en su radar en este momento?"
+"Buen día, le habla Freddy, de TDX. ¿Cómo está? Lo estoy contactando porque estamos ayudando a líderes de tecnología a reducir en un treinta por ciento el tiempo que sus equipos dedican a tareas repetitivas y a acelerar la salida de prototipos. ¿Es un tema que está en su radar en este momento?"
 
 DESCUBRIMIENTO (usar estas preguntas según el flujo):
 - "Entendiendo ese desafío de las tareas repetitivas, ¿en qué procesos específicos su equipo de TI experimenta hoy más cuellos de botella por tickets o llamadas que les quitan foco?"
