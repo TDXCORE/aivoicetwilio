@@ -83,30 +83,13 @@ async def _voice_call(ws: WebSocket):
         )
         logger.info("✅ Transport creado (configuración mejorada)")
 
-        # ───── DEEPGRAM STT CON DEBUGGING ─────
-        class DeepgramSTTDebug(DeepgramSTTService):
-            async def process_frame(self, frame, direction):
-                result = await super().process_frame(frame, direction)
-                if result:
-                    # Log todos los frames que llegan
-                    logger.info(f"🎤 FRAME STT: {type(result)} - {result}")
-                    # Si es transcripción, loggear el texto
-                    if hasattr(result, 'text') and result.text:
-                        logger.info(f"🎤 TRANSCRIPCIÓN: '{result.text}'")
-                    # También verificar si es lista de frames
-                    elif hasattr(result, '__iter__'):
-                        for r in result:
-                            if hasattr(r, 'text') and r.text:
-                                logger.info(f"🎤 TRANSCRIPCIÓN (lista): '{r.text}'")
-                return result
-
-        stt = DeepgramSTTDebug(
+        # ───── DEEPGRAM STT SIMPLE Y ESTABLE ─────
+        stt = DeepgramSTTService(
             api_key=os.getenv("DEEPGRAM_API_KEY"),
             model="nova-2-general",
             language="es",
-            audio_passthrough=True,  # Ayuda con la conectividad
         )
-        logger.info("✅ Deepgram STT creado con debugging")
+        logger.info("✅ Deepgram STT creado (configuración simple y estable)")
         
         # ───── GROQ LLM ─────
         llm = GroqLLMService(
@@ -315,7 +298,7 @@ async def health_check():
             "twilio": bool(os.getenv("TWILIO_ACCOUNT_SID")),
         },
         "services": {
-            "stt": "Deepgram Nova-2 con Debugging",
+            "stt": "Deepgram Nova-2 Estable",
             "llm": "Groq Llama 3.3 70B Mejorado", 
             "tts": "Cartesia optimizado",
             "purpose": "Sales Development Representative (SDR)"
