@@ -19,7 +19,7 @@ from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
 from pipecat.services.groq.stt import GroqSTTService
 from pipecat.services.groq.llm import GroqLLMService
-from pipecat.services.cartesia.tts import CartesiaTTSService
+from pipecat.services.elevenlabs.tts import ElevenLabsTTSService
 from pipecat.processors.aggregators.openai_llm_context import OpenAILLMContext
 from openai._types import NOT_GIVEN
 from pipecat.frames.frames import TextFrame
@@ -31,8 +31,8 @@ load_dotenv(override=True)
 # 1) PIPELINE PARA LLAMADAS DE VOZ (WebSocket)
 # ──────────────────────────────────────────
 async def _voice_call(ws: WebSocket):
-    """Maneja la conexión Media Streams de Twilio - Groq Whisper + Groq LLM + Cartesia."""
-    logger.info("🎯 Iniciando pipeline de voz Groq Whisper + Groq LLM + Cartesia...")
+    """Maneja la conexión Media Streams de Twilio - Groq Whisper + Groq LLM + ElevenLabs."""
+    logger.info("🎯 Iniciando pipeline de voz Groq Whisper + Groq LLM + ElevenLabs...")
     
     try:
         # ───── TWILIO HANDSHAKE (necesario para Media Streams) ─────
@@ -101,19 +101,23 @@ async def _voice_call(ws: WebSocket):
         )
         logger.info("✅ Groq LLM creado")
         
-        # ───── CARTESIA TTS ─────
-        cartesia_api_key = os.getenv("CARTESIA_API_KEY")
-        if not cartesia_api_key:
-            logger.error("❌ CARTESIA_API_KEY no configurada")
-            raise ValueError("CARTESIA_API_KEY requerida")
+        # ───── ELEVENLABS TTS ─────
+        elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
+        if not elevenlabs_api_key:
+            logger.error("❌ ELEVENLABS_API_KEY no configurada")
+            raise ValueError("ELEVENLABS_API_KEY requerida")
             
-        tts = CartesiaTTSService(
-            api_key=cartesia_api_key,
-            voice_id="308c82e1-ecef-48fc-b9f2-2b5298629789",
-            speed=0.8,  # Velocidad más natural
-            sample_rate=8000,
+        tts = ElevenLabsTTSService(
+            api_key=elevenlabs_api_key,
+            voice_id="pNInz6obpgDQGcFmaJgB",  # Adam voice (spanish compatible)
+            model="eleven_flash_v2_5",  # Ultra-fast model optimized for real-time
+            language="es",  # Español
+            stability=0.5,  # Estabilidad balanceada
+            similarity_boost=0.8,  # Mayor similitud de voz
+            style=0.0,  # Sin estilo adicional para claridad
+            use_speaker_boost=True,  # Mejora la calidad del speaker
         )
-        logger.info("✅ Cartesia TTS creado")
+        logger.info("✅ ElevenLabs TTS creado")
 
         # ───── CONTEXTO LLM CORREGIDO ─────
         messages = [
@@ -219,7 +223,7 @@ INSTRUCCIONES CRÍTICAS:
             logger.info(f"🎯 Groq Whisper transcripción: '{transcript}'")
 
         # ───── EJECUTAR RUNNER ─────
-        logger.info("🚀 Iniciando pipeline de ventas B2B con Groq Whisper...")
+        logger.info("🚀 Iniciando pipeline de ventas B2B con Groq Whisper + ElevenLabs...")
         runner = PipelineRunner(handle_sigint=False)
         await runner.run(task)
         logger.info("📞 Llamada de ventas finalizada")
@@ -283,17 +287,17 @@ async def health_check():
     logger.info("🏥 Health check Pipeline de Ventas B2B")
     return {
         "status": "healthy", 
-        "service": "TDX Sales Bot - Groq Whisper + Groq LLM + Cartesia",
-        "version": "2025-06-24-GROQ-WHISPER",
+        "service": "TDX Sales Bot - Groq Whisper + Groq LLM + ElevenLabs",
+        "version": "2025-06-24-ELEVENLABS-FLASH",
         "apis": {
             "groq": bool(os.getenv("GROQ_API_KEY")),
-            "cartesia": bool(os.getenv("CARTESIA_API_KEY")),
+            "elevenlabs": bool(os.getenv("ELEVENLABS_API_KEY")),
             "twilio": bool(os.getenv("TWILIO_ACCOUNT_SID")),
         },
         "services": {
             "stt": "Groq Whisper Large V3",
             "llm": "Groq Llama 3.3 70B", 
-            "tts": "Cartesia optimizado",
+            "tts": "ElevenLabs Flash V2.5",
             "purpose": "Sales Development Representative (SDR)"
         }
     }
