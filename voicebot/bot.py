@@ -16,7 +16,7 @@ from pipecat.transports.network.fastapi_websocket import (
 )
 from pipecat.serializers.twilio import TwilioFrameSerializer
 from pipecat.audio.vad.silero import SileroVADAnalyzer
-from pipecat.services.groq.stt import GroqSTTService
+from pipecat.services.deepgram.stt import DeepgramSTTService
 from pipecat.services.groq.llm import GroqLLMService
 from pipecat.services.cartesia.tts import CartesiaTTSService
 from pipecat.processors.aggregators.openai_llm_context import OpenAILLMContext
@@ -32,8 +32,8 @@ SAMPLE_RATE = 8000  # Twilio Media Streams
 # 1) PIPELINE PARA LLAMADAS DE VOZ (WebSocket)
 # ──────────────────────────────────────────
 async def _voice_call(ws: WebSocket):
-    """Maneja la conexión Media Streams de Twilio - Groq + Cartesia."""
-    logger.info("🎯 Iniciando pipeline de voz Groq + Cartesia...")
+    """Maneja la conexión Media Streams de Twilio - Deepgram + Groq + Cartesia."""
+    logger.info("🎯 Iniciando pipeline de voz Deepgram + Groq + Cartesia...")
     
     try:
         # ───── TWILIO HANDSHAKE (necesario para Media Streams) ─────
@@ -57,15 +57,15 @@ async def _voice_call(ws: WebSocket):
         )
         logger.info("✅ Twilio serializer creado")
 
-        # ───── SERVICIOS GROQ + CARTESIA ─────
-        # Groq Whisper STT
-        stt = GroqSTTService(
-            api_key=os.getenv("GROQ_API_KEY"),
-            model="whisper-large-v3-turbo",
+        # ───── SERVICIOS DEEPGRAM + GROQ + CARTESIA ─────
+        # Deepgram STT
+        stt = DeepgramSTTService(
+            api_key=os.getenv("DEEPGRAM_API_KEY"),
+            model="nova-2",
             language="es",
-            temperature=0
+            sample_rate=SAMPLE_RATE
         )
-        logger.info("✅ Groq Whisper STT creado")
+        logger.info("✅ Deepgram STT creado")
         
         # Groq Llama 70B LLM
         llm = GroqLLMService(
@@ -85,7 +85,7 @@ async def _voice_call(ws: WebSocket):
         # Usar una voz en español o compatible
         tts = CartesiaTTSService(
             api_key=cartesia_api_key,
-            voice_id="79a125e8-cd45-4c13-8a67-188112f4dd22",
+            voice_id="308c82e1-ecef-48fc-b9f2-2b5298629789",
             output_format="ulaw_8000",   # ← formato 8 kHz μ-law
             sample_rate=8000,            # ← asegura la frecuencia correcta
             stream_mode="chunked",
@@ -130,17 +130,17 @@ async def _voice_call(ws: WebSocket):
         )
         logger.info("✅ Transport creado")
 
-        # ───── PIPELINE GROQ + CARTESIA (simple y efectivo) ─────
+        # ───── PIPELINE DEEPGRAM + GROQ + CARTESIA (simple y efectivo) ─────
         pipeline = Pipeline([
             transport.input(),      # WebSocket Twilio
-            stt,                   # Groq Whisper
+            stt,                   # Deepgram STT
             ctx_aggr.user(),       # Contexto usuario
             llm,                   # Groq Llama 70B
             tts,                   # Cartesia TTS
             transport.output(),    # De vuelta a Twilio
             ctx_aggr.assistant(),  # Contexto asistente
         ])
-        logger.info("✅ Pipeline Groq + Cartesia creado")
+        logger.info("✅ Pipeline Deepgram + Groq + Cartesia creado")
 
         # ───── TASK CON PARÁMETROS SIMPLES ─────
         task = PipelineTask(
@@ -169,20 +169,20 @@ async def _voice_call(ws: WebSocket):
         async def send_greeting():
             await asyncio.sleep(2)  # Esperar conexión estable
             logger.info("👋 Enviando saludo...")
-            greeting = TextFrame("¡Hola! Soy Lorenzo de TDX. Ahora uso Groq y Cartesia para una experiencia de audio mejorada. ¿En qué puedo ayudarte?")
+            greeting = TextFrame("¡Hola! Soy Lorenzo de TDX. Ahora uso Deepgram y Cartesia para una experiencia de audio mejorada. ¿En qué puedo ayudarte?")
             await task.queue_frame(greeting)
             logger.info("✅ Saludo enviado")
 
         asyncio.create_task(send_greeting())
 
         # ───── EJECUTAR PIPELINE ─────
-        logger.info("🚀 Iniciando pipeline Groq + Cartesia...")
+        logger.info("🚀 Iniciando pipeline Deepgram + Groq + Cartesia...")
         runner = PipelineRunner(handle_sigint=False)
         await runner.run(task)
-        logger.info("📞 Llamada Groq + Cartesia finalizada")
+        logger.info("📞 Llamada Deepgram + Groq + Cartesia finalizada")
         
     except Exception as e:
-        logger.exception(f"💥 Error en pipeline Groq + Cartesia: {e}")
+        logger.exception(f"💥 Error en pipeline Deepgram + Groq + Cartesia: {e}")
         raise
 
 
@@ -238,18 +238,19 @@ async def _sms(request: Request) -> Response:
 # ──────────────────────────────────────────
 async def health_check():
     """Health check endpoint."""
-    logger.info("🏥 Health check Groq + Cartesia")
+    logger.info("🏥 Health check Deepgram + Groq + Cartesia")
     return {
         "status": "healthy", 
-        "service": "TDX Voice Bot - Groq + Cartesia",
-        "version": "2025-06-22-GROQ-CARTESIA",
+        "service": "TDX Voice Bot - Deepgram + Groq + Cartesia",
+        "version": "2025-06-24-DEEPGRAM-GROQ-CARTESIA",
         "apis": {
+            "deepgram": bool(os.getenv("DEEPGRAM_API_KEY")),
             "groq": bool(os.getenv("GROQ_API_KEY")),
             "cartesia": bool(os.getenv("CARTESIA_API_KEY")),
             "twilio": bool(os.getenv("TWILIO_ACCOUNT_SID")),
         },
         "services": {
-            "stt": "Groq Whisper Large v3",
+            "stt": "Deepgram Nova-2",
             "llm": "Groq Llama 3.3 70B", 
             "tts": "Cartesia (Spanish voice)"
         }
@@ -261,11 +262,11 @@ async def health_check():
 # ──────────────────────────────────────────
 async def bot(ctx):
     """
-    Función principal Groq + Cartesia.
+    Función principal Deepgram + Groq + Cartesia.
     Compatible con tu main.py existente.
     """
     if isinstance(ctx, WebSocket):
-        logger.info("🗣️ Llamada de voz Twilio → Groq + Cartesia Stack")
+        logger.info("🗣️ Llamada de voz Twilio → Deepgram + Groq + Cartesia Stack")
         await _voice_call(ctx)
     elif isinstance(ctx, Request):
         logger.info("💬 Mensaje SMS/WhatsApp → Groq")
