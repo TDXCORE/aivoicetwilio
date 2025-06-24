@@ -21,7 +21,6 @@ from pipecat.services.deepgram.stt import DeepgramSTTService
 from pipecat.services.groq.llm import GroqLLMService
 from pipecat.services.cartesia.tts import CartesiaTTSService
 from pipecat.processors.aggregators.openai_llm_context import OpenAILLMContext
-from deepgram import LiveOptions, Language
 from openai._types import NOT_GIVEN
 from pipecat.frames.frames import TextFrame
 
@@ -84,16 +83,13 @@ async def _voice_call(ws: WebSocket):
         )
         logger.info("✅ Transport creado (configuración correcta)")
 
-        # ───── DEEPGRAM STT CON CONFIGURACIÓN ACTUALIZADA ─────
+        # ───── DEEPGRAM STT CONFIGURACIÓN SIMPLE ─────
         stt = DeepgramSTTService(
             api_key=os.getenv("DEEPGRAM_API_KEY"),
-            sample_rate=8000,
-            live_options=LiveOptions(
-                model="nova-3-general",
-                language=Language.ES
-            )
+            model="nova-2-general",
+            language="es",
         )
-        logger.info("✅ Deepgram STT creado (configuración actualizada)")
+        logger.info("✅ Deepgram STT creado (configuración simple)")
         
         # ───── GROQ LLM ─────
         llm = GroqLLMService(
@@ -283,7 +279,7 @@ async def health_check():
             "twilio": bool(os.getenv("TWILIO_ACCOUNT_SID")),
         },
         "services": {
-            "stt": "Deepgram Nova-3 con LiveOptions",
+            "stt": "Deepgram Nova-2 Simple",
             "llm": "Groq Llama 3.3 70B", 
             "tts": "Cartesia optimizado",
             "purpose": "Sales Development Representative (SDR)"
