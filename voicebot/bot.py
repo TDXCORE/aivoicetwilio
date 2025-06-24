@@ -86,7 +86,7 @@ async def _voice_call(ws: WebSocket):
         # ───── DEEPGRAM STT SIMPLE Y ESTABLE ─────
         stt = DeepgramSTTService(
             api_key=os.getenv("DEEPGRAM_API_KEY"),
-            model="nova-2-general",
+            model="whisper",
             language="es",
         )
         logger.info("✅ Deepgram STT creado (configuración simple y estable)")
