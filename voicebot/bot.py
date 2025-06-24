@@ -81,6 +81,7 @@ async def _voice_call(ws: WebSocket):
                 audio_out_sample_rate=8000,
                 audio_in_channels=1,    # Mono channel explícito
                 audio_out_channels=1,   # Mono channel explícito
+                audio_out_enabled_timeout=30.0,  # Timeout más largo para audio
             ),
         )
         logger.info("✅ Transport creado")
@@ -101,7 +102,7 @@ async def _voice_call(ws: WebSocket):
         )
         logger.info("✅ Groq LLM creado")
         
-        # ───── ELEVENLABS TTS ─────
+        # ───── ELEVENLABS TTS OPTIMIZADO ─────
         elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
         if not elevenlabs_api_key:
             logger.error("❌ ELEVENLABS_API_KEY no configurada")
@@ -109,21 +110,23 @@ async def _voice_call(ws: WebSocket):
             
         tts = ElevenLabsTTSService(
             api_key=elevenlabs_api_key,
-            voice_id="pNInz6obpgDQGcFmaJgB",  # Adam voice (spanish compatible)
+            voice_id="yvNNEO8EIbfE6QBiyLQx",  # Adam voice (spanish compatible)
             model="eleven_flash_v2_5",  # Ultra-fast model optimized for real-time
             language="es",  # Español
-            stability=0.5,  # Estabilidad balanceada
-            similarity_boost=0.8,  # Mayor similitud de voz
-            style=0.0,  # Sin estilo adicional para claridad
-            use_speaker_boost=True,  # Mejora la calidad del speaker
+            stability=0.4,  # Menor estabilidad para mayor velocidad
+            similarity_boost=0.7,  # Reducido para mayor velocidad
+            style=0.0,  # Sin estilo adicional
+            use_speaker_boost=False,  # Desactivado para mayor velocidad
+            output_format="pcm_8000",  # Formato optimizado para Twilio
+            optimize_streaming_latency=4,  # Máxima optimización de latencia
         )
-        logger.info("✅ ElevenLabs TTS creado")
+        logger.info("✅ ElevenLabs TTS creado (optimizado para baja latencia)")
 
         # ───── CONTEXTO LLM CORREGIDO ─────
         messages = [
             {
                 "role": "system",
-                "content": """Eres Freddy, SDR (Sales Development Representative) de TDX, empresa colombiana de soluciones de IA conversacional y automatización.
+                "content": """Eres Laura, SDR (Sales Development Representative) de TDX, empresa colombiana de soluciones de IA conversacional y automatización.
 
 PERSONALIDAD Y TONO:
 - Formal-amigable, colombiano profesional
@@ -141,7 +144,12 @@ OBJETIVO DE LA LLAMADA:
 GUION A SEGUIR:
 
 APERTURA (usar SOLO después de que el prospecto hable primero):
-"Buen día, le habla Freddy, de TDX. ¿Cómo está? Lo estoy contactando porque estamos ayudando a líderes de tecnología a reducir en un treinta por ciento el tiempo que sus equipos dedican a tareas repetitivas y a acelerar la salida de prototipos. ¿Es un tema que está en su radar en este momento?"
+"Buen día, le habla Laura, de TDX. ¿Cómo está? 
+
+(esperar respuesta)
+
+INTRODUCCION:
+Lo estoy contactando porque estamos ayudando a líderes de tecnología a reducir en un treinta por ciento el tiempo que sus equipos dedican a tareas repetitivas y a acelerar la salida de prototipos. ¿Es un tema que está en su radar en este momento?"
 
 DESCUBRIMIENTO (usar estas preguntas según el flujo):
 - "Entendiendo ese desafío de las tareas repetitivas, ¿en qué procesos específicos su equipo de TI experimenta hoy más cuellos de botella por tickets o llamadas que les quitan foco?"
@@ -210,17 +218,29 @@ INSTRUCCIONES CRÍTICAS:
         @transport.event_handler("on_client_connected")
         async def on_client_connected(transport, client):
             logger.info(f"🔗 Cliente conectado: {client}")
-            # NO enviar ningún frame inicial - esperar a que el usuario hable
 
         @transport.event_handler("on_client_disconnected")
         async def on_client_disconnected(transport, client):
             logger.info(f"👋 Cliente desconectado: {client}")
             await task.cancel()
 
-        # ───── EVENTOS PARA DEBUGGING DE STT ─────
-        @stt.event_handler("on_transcript")
-        async def on_transcript(stt, transcript):
-            logger.info(f"🎯 Groq Whisper transcripción: '{transcript}'")
+        # ───── EVENTOS PARA DEBUGGING DE AUDIO ─────
+        @transport.event_handler("on_audio_stream_started")
+        async def on_audio_stream_started(transport):
+            logger.info("🎵 Audio stream iniciado")
+
+        @transport.event_handler("on_audio_stream_stopped") 
+        async def on_audio_stream_stopped(transport):
+            logger.info("🔇 Audio stream detenido")
+
+        # ───── EVENTOS DE TTS PARA DEBUGGING ─────
+        @tts.event_handler("on_tts_started")
+        async def on_tts_started(tts, text):
+            logger.info(f"🔊 TTS iniciado: '{text[:50]}...'")
+
+        @tts.event_handler("on_tts_stopped")
+        async def on_tts_stopped(tts):
+            logger.info("🔇 TTS finalizado")
 
         # ───── EJECUTAR RUNNER ─────
         logger.info("🚀 Iniciando pipeline de ventas B2B con Groq Whisper + ElevenLabs...")
@@ -255,7 +275,7 @@ async def _sms(request: Request) -> Response:
         context = OpenAILLMContext([
             {
                 "role": "system", 
-                "content": "Eres Freddy, SDR de TDX. Responde de forma concisa y profesional en español. Enfócate en agendar una reunión para mostrar nuestras soluciones de IA conversacional."
+                "content": "Eres Laura, SDR de TDX. Responde de forma concisa y profesional en español. Enfócate en agendar una reunión para mostrar nuestras soluciones de IA conversacional."
             },
             {
                 "role": "user",
@@ -312,10 +332,10 @@ async def bot(ctx):
     Compatible con tu main.py existente.
     """
     if isinstance(ctx, WebSocket):
-        logger.info("📞 Llamada de ventas → Freddy SDR de TDX")
+        logger.info("📞 Llamada de ventas → Laura SDR de TDX")
         await _voice_call(ctx)
     elif isinstance(ctx, Request):
-        logger.info("💬 Mensaje SMS/WhatsApp → Freddy SDR")
+        logger.info("💬 Mensaje SMS/WhatsApp → Laura SDR")
         return await _sms(ctx)
     else:
         logger.error(f"❌ Tipo no soportado: {type(ctx)}")
