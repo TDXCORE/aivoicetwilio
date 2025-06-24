@@ -58,13 +58,17 @@ async def _voice_call(ws: WebSocket):
         logger.info("✅ Twilio serializer creado")
 
         # ───── SERVICIOS DEEPGRAM + GROQ + CARTESIA ─────
-        # Deepgram STT optimizado para llamadas B2B
+        # Deepgram STT con debugging mejorado
         class DeepgramSTTDebug(DeepgramSTTService):
             async def process_frame(self, frame, direction):
                 result = await super().process_frame(frame, direction)
                 # Log todas las transcripciones para debugging
-                if hasattr(result, 'text') and result.text:
-                    logger.info(f"🎤 TRANSCRIPCIÓN DEEPGRAM: '{result.text}'")
+                if result:
+                    if hasattr(result, 'text') and result.text:
+                        logger.info(f"🎤 TRANSCRIPCIÓN DEEPGRAM: '{result.text}'")
+                    # También log si hay frames de transcripción
+                    if hasattr(result, 'type') and 'transcription' in str(result.type).lower():
+                        logger.info(f"🎤 FRAME TRANSCRIPCIÓN: {result}")
                 return result
         
         stt = DeepgramSTTDebug(
@@ -123,31 +127,31 @@ OBJETIVO DE LA LLAMADA:
 
 GUION A SEGUIR:
 
-APERTURA (usar SOLO después de que el prospecto hable primero):
+APERTURA (usar SOLO después de que el cliente hable primero - "Hola", "Buenos días", etc.):
 "Buen día, le habla Freddy, de TDX. Lo estoy contactando porque estamos ayudando a líderes de tecnología a reducir en un 30% el tiempo que sus equipos dedican a tareas repetitivas y a acelerar la salida de prototipos. ¿Es un tema que está en su radar en este momento?"
 
 DESCUBRIMIENTO (usar estas preguntas según el flujo):
-- "Entendiendo ese desafío de las tareas repetitivas, ¿en qué procesos específicos su equipo de TI experimenta hoy más **cuellos de botella** por tickets o llamadas que les quitan foco?"
+- "Entendiendo ese desafío de las tareas repetitivas, ¿en qué procesos específicos su equipo de TI experimenta hoy más cuellos de botella por tickets o llamadas que les quitan foco?"
 - "Pensando en la agilidad, cuando necesitan lanzar un prototipo o MVP, ¿cuánto tiempo les toma hoy realmente sacarlo a producción y llevarlo al usuario final?"
-- "Hablando de eficiencia, ¿sus sistemas como CRM/ERP y canales como WhatsApp o voz conversan de forma fluida, o su equipo debe hacer muchos **amarres manuales** para que funcionen juntos?"
+- "Hablando de eficiencia, ¿sus sistemas como CRM/ERP y canales como WhatsApp o voz conversan de forma fluida, o su equipo debe hacer muchos amarres manuales para que funcionen juntos?"
 
 SOLUCIONES TDX (mapear directamente al dolor identificado):
-- Para **cuellos de botella** en soporte: "Justamente para liberar esa carga, TDX implementa **AI Chatbot Multiagente** o **AI Voice Assistant**; estas soluciones toman el 80% de las interacciones repetitivas."
-- Para **tareas repetitivas**: "Para **quitarse de encima** esas labores que consumen tiempo valioso, utilizamos **Flujos de Automatización** y nuestro **AgentOps Framework**, optimizando procesos end-to-end."
-- Para la **velocidad de lanzamiento de MVPs**: "Si el desafío es la agilidad, con **MVP en 15 días** y nuestra oferta de **SaaS Agentic**, podemos acelerar significativamente la puesta en marcha de sus innovaciones."
-- Para **amarres manuales** y **sistemas desintegrados**: "Si la fricción está en la integración, nuestra **Integración con CRM/ERP** y el **AI Assistant para WhatsApp** permiten una conectividad perfecta y eliminan esos procesos manuales."
+- Para cuellos de botella en soporte: "Justamente para liberar esa carga, TDX implementa AI Chatbot Multiagente o AI Voice Assistant; estas soluciones toman el 80% de las interacciones repetitivas."
+- Para tareas repetitivas: "Para quitarse de encima esas labores que consumen tiempo valioso, utilizamos Flujos de Automatización y nuestro AgentOps Framework, optimizando procesos end-to-end."
+- Para velocidad de lanzamiento de MVPs: "Si el desafío es la agilidad, con MVP en 15 días y nuestra oferta de SaaS Agentic, podemos acelerar significativamente la puesta en marcha de sus innovaciones."
+- Para amarres manuales y sistemas desintegrados: "Si la fricción está en la integración, nuestra Integración con CRM/ERP y el AI Assistant para WhatsApp permiten una conectividad perfecta y eliminan esos procesos manuales."
 
 CIERRE:
-"Dado que identificamos (mencionar el dolor principal del prospecto), propongo una sesión de descubrimiento de 25 minutos. Allí podemos revisar a detalle sus flujos y le mostraré un caso real de TDX, similar al suyo, donde logramos resultados tangibles. ¿Le iría bien este jueves a las 10 a.m. o prefiere el viernes a primera hora?"
+"Dado que identificamos [mencionar el dolor principal del prospecto], propongo una sesión de descubrimiento de 25 minutos. Allí podemos revisar a detalle sus flujos y le mostraré un caso real de TDX, similar al suyo, donde logramos resultados tangibles. ¿Le iría bien este jueves a las 10 a.m. o prefiere el viernes a primera hora?"
 
 INSTRUCCIONES CRÍTICAS:
-- NUNCA saludar hasta que el prospecto hable primero
-- Seguir el guion paso a paso
+- NO responder hasta que recibas un mensaje del usuario
+- Solo responder cuando el cliente haya hablado primero
+- Seguir el guion paso a paso después de que el cliente hable
 - Escuchar 70%, hablar 30%
 - Siempre buscar agendar la reunión
 - Usar vocabulario formal-colombiano: "cuello de botella", "amarres", "quitarse de encima"
-- Respuestas máximo 2 oraciones para mantener fluidez
-- No usar muletillas coloquiales excesivas ni groserías"""
+- Respuestas máximo 2 oraciones para mantener fluidez"""
             }
         ]
         context = OpenAILLMContext(messages, NOT_GIVEN)
@@ -175,7 +179,7 @@ INSTRUCCIONES CRÍTICAS:
         # ───── PIPELINE OPTIMIZADO PARA VENTAS ─────
         pipeline = Pipeline([
             transport.input(),      # WebSocket Twilio
-            stt,                   # Deepgram STT optimizado
+            stt,                   # Deepgram STT con debugging
             ctx_aggr.user(),       # Contexto usuario
             llm,                   # Groq Llama con prompt de ventas
             tts,                   # Cartesia TTS profesional
@@ -277,7 +281,7 @@ async def health_check():
     return {
         "status": "healthy", 
         "service": "TDX Sales Bot - Deepgram + Groq + Cartesia",
-        "version": "2025-06-24-SALES-B2B-OPTIMIZED",
+        "version": "2025-06-24-SALES-B2B-FINAL",
         "apis": {
             "deepgram": bool(os.getenv("DEEPGRAM_API_KEY")),
             "groq": bool(os.getenv("GROQ_API_KEY")),
@@ -285,7 +289,7 @@ async def health_check():
             "twilio": bool(os.getenv("TWILIO_ACCOUNT_SID")),
         },
         "services": {
-            "stt": "Deepgram Nova-2 Phonecall",
+            "stt": "Deepgram Nova-2 General con Debug",
             "llm": "Groq Llama 3.3 70B con Script de Ventas", 
             "tts": "Cartesia Voz Profesional",
             "purpose": "Sales Development Representative (SDR)"
