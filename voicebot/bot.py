@@ -59,19 +59,21 @@ async def _voice_call(ws: WebSocket):
 
         # ───── SERVICIOS DEEPGRAM + GROQ + CARTESIA ─────
         # Deepgram STT optimizado para llamadas B2B
-        stt = DeepgramSTTService(
+        class DeepgramSTTDebug(DeepgramSTTService):
+            async def process_frame(self, frame, direction):
+                result = await super().process_frame(frame, direction)
+                # Log todas las transcripciones para debugging
+                if hasattr(result, 'text') and result.text:
+                    logger.info(f"🎤 TRANSCRIPCIÓN DEEPGRAM: '{result.text}'")
+                return result
+        
+        stt = DeepgramSTTDebug(
             api_key=os.getenv("DEEPGRAM_API_KEY"),
-            model="nova-2-phonecall",  # Optimizado para llamadas telefónicas
-            language="es-419",         # Español latinoamericano
-            smart_format=True,         # Auto-formateo profesional
-            punctuate=True,           # Puntuación automática
-            numerals=True,            # "quince" → "15"
-            filler_words=False,       # Sin "eh", "um" para mayor claridad
-            profanity_filter=True,    # Filtro de groserías
+            model="nova-2-general",    
+            language="es",             
+            smart_format=True,         
+            punctuate=True,           
             sample_rate=SAMPLE_RATE,
-            # Parámetros para fluidez en ventas
-            interim_results=True,     # Resultados preliminares
-            endpointing_ms=15,        # Detección más rápida de fin de frase
         )
         logger.info("✅ Deepgram STT creado")
         
@@ -125,19 +127,18 @@ APERTURA (usar SOLO después de que el prospecto hable primero):
 "Buen día, le habla Freddy, de TDX. Lo estoy contactando porque estamos ayudando a líderes de tecnología a reducir en un 30% el tiempo que sus equipos dedican a tareas repetitivas y a acelerar la salida de prototipos. ¿Es un tema que está en su radar en este momento?"
 
 DESCUBRIMIENTO (usar estas preguntas según el flujo):
-- "¿En qué procesos siente hoy más atascos de tickets o llamadas que le quitan foco a su equipo?"
-- "¿Qué tareas repetitivas le gustaría quitarse de encima en el próximo trimestre?"
-- "Cuando necesita un prototipo o MVP, ¿cuánto se demora hoy en sacarlo a producción?"
-- "¿Sus CRM/ERP y canales como WhatsApp o voz conversan de forma fluida o toca hacer amarres manuales?"
+- "Entendiendo ese desafío de las tareas repetitivas, ¿en qué procesos específicos su equipo de TI experimenta hoy más **cuellos de botella** por tickets o llamadas que les quitan foco?"
+- "Pensando en la agilidad, cuando necesitan lanzar un prototipo o MVP, ¿cuánto tiempo les toma hoy realmente sacarlo a producción y llevarlo al usuario final?"
+- "Hablando de eficiencia, ¿sus sistemas como CRM/ERP y canales como WhatsApp o voz conversan de forma fluida, o su equipo debe hacer muchos **amarres manuales** para que funcionen juntos?"
 
-SOLUCIONES TDX:
-- AI Chatbot Multiagente / AI Voice Assistant (para soporte)
-- Flujos de Automatización / AgentOps Framework (tareas repetitivas)
-- MVP en 15 días + SaaS Agentic (time-to-market)
-- Integración CRM/ERP + AI Assistant WhatsApp (integraciones)
+SOLUCIONES TDX (mapear directamente al dolor identificado):
+- Para **cuellos de botella** en soporte: "Justamente para liberar esa carga, TDX implementa **AI Chatbot Multiagente** o **AI Voice Assistant**; estas soluciones toman el 80% de las interacciones repetitivas."
+- Para **tareas repetitivas**: "Para **quitarse de encima** esas labores que consumen tiempo valioso, utilizamos **Flujos de Automatización** y nuestro **AgentOps Framework**, optimizando procesos end-to-end."
+- Para la **velocidad de lanzamiento de MVPs**: "Si el desafío es la agilidad, con **MVP en 15 días** y nuestra oferta de **SaaS Agentic**, podemos acelerar significativamente la puesta en marcha de sus innovaciones."
+- Para **amarres manuales** y **sistemas desintegrados**: "Si la fricción está en la integración, nuestra **Integración con CRM/ERP** y el **AI Assistant para WhatsApp** permiten una conectividad perfecta y eliminan esos procesos manuales."
 
 CIERRE:
-"Propongo que tengamos una sesión de descubrimiento de 25 min: reviso a detalle sus flujos y le muestro un caso similar al suyo. ¿Le va bien este jueves a las 10 a.m. o prefiere viernes a primera hora?"
+"Dado que identificamos (mencionar el dolor principal del prospecto), propongo una sesión de descubrimiento de 25 minutos. Allí podemos revisar a detalle sus flujos y le mostraré un caso real de TDX, similar al suyo, donde logramos resultados tangibles. ¿Le iría bien este jueves a las 10 a.m. o prefiere el viernes a primera hora?"
 
 INSTRUCCIONES CRÍTICAS:
 - NUNCA saludar hasta que el prospecto hable primero
@@ -145,7 +146,8 @@ INSTRUCCIONES CRÍTICAS:
 - Escuchar 70%, hablar 30%
 - Siempre buscar agendar la reunión
 - Usar vocabulario formal-colombiano: "cuello de botella", "amarres", "quitarse de encima"
-- Respuestas máximo 2 oraciones para mantener fluidez"""
+- Respuestas máximo 2 oraciones para mantener fluidez
+- No usar muletillas coloquiales excesivas ni groserías"""
             }
         ]
         context = OpenAILLMContext(messages, NOT_GIVEN)
@@ -197,7 +199,7 @@ INSTRUCCIONES CRÍTICAS:
         @transport.event_handler("on_client_connected")
         async def on_client_connected(transport, client):
             logger.info(f"🔗 Cliente conectado: {client}")
-            # NO enviar saludo automático - esperar a que el usuario hable primero
+            # NO enviar saludo automático - esperar a que el cliente hable primero
             await task.queue_frames([ctx_aggr.user().get_context_frame()])
 
         @transport.event_handler("on_client_disconnected")
@@ -206,10 +208,8 @@ INSTRUCCIONES CRÍTICAS:
             await task.cancel()
 
         # ───── MANEJO ESPECIAL DEL PRIMER SALUDO ─────
-        user_has_spoken = False  # Flag para detectar si el usuario ya habló
-        
-        # El manejo del primer saludo se hace automáticamente por el LLM
-        # cuando recibe la primera transcripción del usuario
+        # El bot espera que el cliente hable primero ("Hola", "Buenos días")
+        # Luego el LLM responde con la apertura comercial según el script
 
         # ───── EJECUTAR PIPELINE ─────
         logger.info("🚀 Iniciando pipeline de ventas B2B...")
