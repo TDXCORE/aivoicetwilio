@@ -61,8 +61,13 @@ async def _voice_call(ws: WebSocket):
         # Deepgram STT
         stt = DeepgramSTTService(
             api_key=os.getenv("DEEPGRAM_API_KEY"),
-            model="nova-2",
-            language="es",
+            model="nova-2-phonecall",
+            language="es-419",
+            filler_words=True,
+            profanity_filter=True,
+            smart_format=True,
+            punctuate=True,
+            numerals=True,
             sample_rate=SAMPLE_RATE
         )
         logger.info("✅ Deepgram STT creado")
