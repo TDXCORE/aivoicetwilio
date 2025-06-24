@@ -17,7 +17,7 @@ from pipecat.transports.network.fastapi_websocket import (
 from pipecat.serializers.twilio import TwilioFrameSerializer
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
-from pipecat.services.deepgram.stt import DeepgramSTTService
+from pipecat.services.groq.stt import GroqSTTService
 from pipecat.services.groq.llm import GroqLLMService
 from pipecat.services.cartesia.tts import CartesiaTTSService
 from pipecat.processors.aggregators.openai_llm_context import OpenAILLMContext
@@ -31,8 +31,8 @@ load_dotenv(override=True)
 # 1) PIPELINE PARA LLAMADAS DE VOZ (WebSocket)
 # ──────────────────────────────────────────
 async def _voice_call(ws: WebSocket):
-    """Maneja la conexión Media Streams de Twilio - Deepgram + Groq + Cartesia."""
-    logger.info("🎯 Iniciando pipeline de voz Deepgram + Groq + Cartesia...")
+    """Maneja la conexión Media Streams de Twilio - Groq Whisper + Groq LLM + Cartesia."""
+    logger.info("🎯 Iniciando pipeline de voz Groq Whisper + Groq LLM + Cartesia...")
     
     try:
         # ───── TWILIO HANDSHAKE (necesario para Media Streams) ─────
@@ -56,19 +56,19 @@ async def _voice_call(ws: WebSocket):
         )
         logger.info("✅ Twilio serializer creado")
 
-        # ───── VAD CONFIGURADO PARA MEJOR DETECCIÓN ─────
+        # ───── VAD CONFIGURADO PARA MAYOR SENSIBILIDAD ─────
         vad_analyzer = SileroVADAnalyzer(
             sample_rate=8000,
             params=VADParams(
-                confidence=0.7,      # Más conservador para evitar falsos positivos
-                start_secs=0.2,      # Esperar más tiempo antes de activar
-                stop_secs=0.8,       # Esperar más tiempo antes de considerar que paró
-                min_volume=0.6       # Volumen mínimo más alto
+                confidence=0.5,      # Más sensible para captar más audio
+                start_secs=0.1,      # Respuesta más rápida
+                stop_secs=0.5,       # Tiempo moderado antes de parar
+                min_volume=0.3       # Volumen mínimo más bajo para captar audio débil
             )
         )
-        logger.info("✅ Silero VAD creado con parámetros mejorados")
+        logger.info("✅ Silero VAD creado con parámetros optimizados")
 
-        # ───── TRANSPORT CON CONFIGURACIÓN MEJORADA ─────
+        # ───── TRANSPORT CON CONFIGURACIÓN OPTIMIZADA PARA AUDIO ─────
         transport = FastAPIWebsocketTransport(
             websocket=ws,
             params=FastAPIWebsocketParams(
@@ -79,18 +79,20 @@ async def _voice_call(ws: WebSocket):
                 serializer=serializer,
                 audio_in_sample_rate=8000,
                 audio_out_sample_rate=8000,
+                audio_in_channels=1,    # Mono channel explícito
+                audio_out_channels=1,   # Mono channel explícito
             ),
         )
         logger.info("✅ Transport creado")
 
-        # ───── DEEPGRAM STT ─────
-        stt = DeepgramSTTService(
-            api_key=os.getenv("DEEPGRAM_API_KEY"),
-            model="whisper",  # Modelo más estable
+        # ───── GROQ WHISPER STT ─────
+        stt = GroqSTTService(
+            api_key=os.getenv("GROQ_API_KEY"),
+            model="whisper-large-v3",
             language="es",
-            interim_results=False,  # Solo resultados finales
+            temperature=0,  # Máxima precisión
         )
-        logger.info("✅ Deepgram STT creado")
+        logger.info("✅ Groq Whisper STT creado")
         
         # ───── GROQ LLM ─────
         llm = GroqLLMService(
@@ -200,7 +202,7 @@ INSTRUCCIONES CRÍTICAS:
             ),
         )
         
-        # ───── EVENTOS DE TRANSPORTE ─────        
+        # ───── EVENTOS DE TRANSPORTE CON DEBUGGING ─────        
         @transport.event_handler("on_client_connected")
         async def on_client_connected(transport, client):
             logger.info(f"🔗 Cliente conectado: {client}")
@@ -211,8 +213,13 @@ INSTRUCCIONES CRÍTICAS:
             logger.info(f"👋 Cliente desconectado: {client}")
             await task.cancel()
 
+        # ───── EVENTOS PARA DEBUGGING DE STT ─────
+        @stt.event_handler("on_transcript")
+        async def on_transcript(stt, transcript):
+            logger.info(f"🎯 Groq Whisper transcripción: '{transcript}'")
+
         # ───── EJECUTAR RUNNER ─────
-        logger.info("🚀 Iniciando pipeline de ventas B2B...")
+        logger.info("🚀 Iniciando pipeline de ventas B2B con Groq Whisper...")
         runner = PipelineRunner(handle_sigint=False)
         await runner.run(task)
         logger.info("📞 Llamada de ventas finalizada")
@@ -276,16 +283,15 @@ async def health_check():
     logger.info("🏥 Health check Pipeline de Ventas B2B")
     return {
         "status": "healthy", 
-        "service": "TDX Sales Bot - Deepgram + Groq + Cartesia",
-        "version": "2025-06-24-SALES-B2B-CORREGIDO",
+        "service": "TDX Sales Bot - Groq Whisper + Groq LLM + Cartesia",
+        "version": "2025-06-24-GROQ-WHISPER",
         "apis": {
-            "deepgram": bool(os.getenv("DEEPGRAM_API_KEY")),
             "groq": bool(os.getenv("GROQ_API_KEY")),
             "cartesia": bool(os.getenv("CARTESIA_API_KEY")),
             "twilio": bool(os.getenv("TWILIO_ACCOUNT_SID")),
         },
         "services": {
-            "stt": "Deepgram Nova-2",
+            "stt": "Groq Whisper Large V3",
             "llm": "Groq Llama 3.3 70B", 
             "tts": "Cartesia optimizado",
             "purpose": "Sales Development Representative (SDR)"
