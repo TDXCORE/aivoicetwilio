@@ -19,7 +19,7 @@ from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
 from pipecat.services.groq.stt import GroqSTTService
 from pipecat.services.groq.llm import GroqLLMService
-from pipecat.services.elevenlabs.tts import ElevenLabsTTSService
+from pipecat.services.cartesia.tts import CartesiaTTSService
 from pipecat.processors.aggregators.openai_llm_context import OpenAILLMContext
 from openai._types import NOT_GIVEN
 from pipecat.frames.frames import TextFrame
@@ -31,14 +31,14 @@ load_dotenv(override=True)
 # 1) PIPELINE PARA LLAMADAS DE VOZ (WebSocket)
 # ──────────────────────────────────────────
 async def _voice_call(ws: WebSocket):
-    """Maneja la conexión Media Streams de Twilio - Groq Whisper + Groq LLM + ElevenLabs."""
-    logger.info("🎯 Iniciando pipeline de voz Groq Whisper + Groq LLM + ElevenLabs...")
+    """Maneja la conexión Media Streams de Twilio - Groq Whisper + Groq LLM + Cartesia."""
+    logger.info("🎯 Iniciando pipeline de voz Groq Whisper + Groq LLM + Cartesia...")
     
     try:
         # ───── TWILIO HANDSHAKE (necesario para Media Streams) ─────
         start_iter = ws.iter_text()
-        await start_iter.__anext__()  # handshake message
-        start_msg = await start_iter.__anext__()  # start message
+        await start_iter._anext_()  # handshake message
+        start_msg = await start_iter._anext_()  # start message
         start_data = json.loads(start_msg)
         
         stream_sid = start_data["start"]["streamSid"]
@@ -81,7 +81,6 @@ async def _voice_call(ws: WebSocket):
                 audio_out_sample_rate=8000,
                 audio_in_channels=1,    # Mono channel explícito
                 audio_out_channels=1,   # Mono channel explícito
-                audio_out_enabled_timeout=30.0,  # Timeout más largo para audio
             ),
         )
         logger.info("✅ Transport creado")
@@ -102,31 +101,25 @@ async def _voice_call(ws: WebSocket):
         )
         logger.info("✅ Groq LLM creado")
         
-        # ───── ELEVENLABS TTS OPTIMIZADO ─────
-        elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
-        if not elevenlabs_api_key:
-            logger.error("❌ ELEVENLABS_API_KEY no configurada")
-            raise ValueError("ELEVENLABS_API_KEY requerida")
+        # ───── CARTESIA TTS ─────
+        cartesia_api_key = os.getenv("CARTESIA_API_KEY")
+        if not cartesia_api_key:
+            logger.error("❌ CARTESIA_API_KEY no configurada")
+            raise ValueError("CARTESIA_API_KEY requerida")
             
-        tts = ElevenLabsTTSService(
-            api_key=elevenlabs_api_key,
-            voice_id="qHkrJuifPpn95wK3rm2A",  # Adam voice (spanish compatible)
-            model="eleven_flash_v2_5",  # Ultra-fast model optimized for real-time
-            language="es",  # Español
-            stability=0.4,  # Menor estabilidad para mayor velocidad
-            similarity_boost=0.7,  # Reducido para mayor velocidad
-            style=0.0,  # Sin estilo adicional
-            use_speaker_boost=False,  # Desactivado para mayor velocidad
-            output_format="pcm_8000",  # Formato optimizado para Twilio
-            optimize_streaming_latency=4,  # Máxima optimización de latencia
+        tts = CartesiaTTSService(
+            api_key=cartesia_api_key,
+            voice_id="308c82e1-ecef-48fc-b9f2-2b5298629789",
+            speed=0.8,  # Velocidad más natural
+            sample_rate=8000,
         )
-        logger.info("✅ ElevenLabs TTS creado (optimizado para baja latencia)")
+        logger.info("✅ Cartesia TTS creado")
 
         # ───── CONTEXTO LLM CORREGIDO ─────
         messages = [
             {
                 "role": "system",
-                "content": """Eres Laura, SDR (Sales Development Representative) de TDX, empresa colombiana de soluciones de IA conversacional y automatización.
+                "content": """Eres Freddy, SDR (Sales Development Representative) de TDX, empresa colombiana de soluciones de IA conversacional y automatización.
 
 PERSONALIDAD Y TONO:
 - Formal-amigable, colombiano profesional
@@ -218,32 +211,20 @@ INSTRUCCIONES CRÍTICAS:
         @transport.event_handler("on_client_connected")
         async def on_client_connected(transport, client):
             logger.info(f"🔗 Cliente conectado: {client}")
+            # NO enviar ningún frame inicial - esperar a que el usuario hable
 
         @transport.event_handler("on_client_disconnected")
         async def on_client_disconnected(transport, client):
             logger.info(f"👋 Cliente desconectado: {client}")
             await task.cancel()
 
-        # ───── EVENTOS PARA DEBUGGING DE AUDIO ─────
-        @transport.event_handler("on_audio_stream_started")
-        async def on_audio_stream_started(transport):
-            logger.info("🎵 Audio stream iniciado")
-
-        @transport.event_handler("on_audio_stream_stopped") 
-        async def on_audio_stream_stopped(transport):
-            logger.info("🔇 Audio stream detenido")
-
-        # ───── EVENTOS DE TTS PARA DEBUGGING ─────
-        @tts.event_handler("on_tts_started")
-        async def on_tts_started(tts, text):
-            logger.info(f"🔊 TTS iniciado: '{text[:50]}...'")
-
-        @tts.event_handler("on_tts_stopped")
-        async def on_tts_stopped(tts):
-            logger.info("🔇 TTS finalizado")
+        # ───── EVENTOS PARA DEBUGGING DE STT ─────
+        @stt.event_handler("on_transcript")
+        async def on_transcript(stt, transcript):
+            logger.info(f"🎯 Groq Whisper transcripción: '{transcript}'")
 
         # ───── EJECUTAR RUNNER ─────
-        logger.info("🚀 Iniciando pipeline de ventas B2B con Groq Whisper + ElevenLabs...")
+        logger.info("🚀 Iniciando pipeline de ventas B2B con Groq Whisper...")
         runner = PipelineRunner(handle_sigint=False)
         await runner.run(task)
         logger.info("📞 Llamada de ventas finalizada")
@@ -275,7 +256,7 @@ async def _sms(request: Request) -> Response:
         context = OpenAILLMContext([
             {
                 "role": "system", 
-                "content": "Eres Laura, SDR de TDX. Responde de forma concisa y profesional en español. Enfócate en agendar una reunión para mostrar nuestras soluciones de IA conversacional."
+                "content": "Eres Freddy, SDR de TDX. Responde de forma concisa y profesional en español. Enfócate en agendar una reunión para mostrar nuestras soluciones de IA conversacional."
             },
             {
                 "role": "user",
@@ -307,17 +288,17 @@ async def health_check():
     logger.info("🏥 Health check Pipeline de Ventas B2B")
     return {
         "status": "healthy", 
-        "service": "TDX Sales Bot - Groq Whisper + Groq LLM + ElevenLabs",
-        "version": "2025-06-24-ELEVENLABS-FLASH",
+        "service": "TDX Sales Bot - Groq Whisper + Groq LLM + Cartesia",
+        "version": "2025-06-24-GROQ-WHISPER",
         "apis": {
             "groq": bool(os.getenv("GROQ_API_KEY")),
-            "elevenlabs": bool(os.getenv("ELEVENLABS_API_KEY")),
+            "cartesia": bool(os.getenv("CARTESIA_API_KEY")),
             "twilio": bool(os.getenv("TWILIO_ACCOUNT_SID")),
         },
         "services": {
             "stt": "Groq Whisper Large V3",
             "llm": "Groq Llama 3.3 70B", 
-            "tts": "ElevenLabs Flash V2.5",
+            "tts": "Cartesia optimizado",
             "purpose": "Sales Development Representative (SDR)"
         }
     }
@@ -332,11 +313,11 @@ async def bot(ctx):
     Compatible con tu main.py existente.
     """
     if isinstance(ctx, WebSocket):
-        logger.info("📞 Llamada de ventas → Laura SDR de TDX")
+        logger.info("📞 Llamada de ventas → Freddy SDR de TDX")
         await _voice_call(ctx)
     elif isinstance(ctx, Request):
-        logger.info("💬 Mensaje SMS/WhatsApp → Laura SDR")
+        logger.info("💬 Mensaje SMS/WhatsApp → Freddy SDR")
         return await _sms(ctx)
     else:
         logger.error(f"❌ Tipo no soportado: {type(ctx)}")
-        raise TypeError("bot() sólo acepta WebSocket o Request de FastAPI")
+        raise TypeError("bot() sólo acepta WebSocket o Request de FastAPI")
