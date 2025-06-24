@@ -16,10 +16,12 @@ from pipecat.transports.network.fastapi_websocket import (
 )
 from pipecat.serializers.twilio import TwilioFrameSerializer
 from pipecat.audio.vad.silero import SileroVADAnalyzer
+from pipecat.audio.vad.vad_analyzer import VADParams
 from pipecat.services.deepgram.stt import DeepgramSTTService
 from pipecat.services.groq.llm import GroqLLMService
 from pipecat.services.cartesia.tts import CartesiaTTSService
 from pipecat.processors.aggregators.openai_llm_context import OpenAILLMContext
+from deepgram import LiveOptions, Language
 from openai._types import NOT_GIVEN
 from pipecat.frames.frames import TextFrame
 
@@ -46,7 +48,7 @@ async def _voice_call(ws: WebSocket):
         logger.info(f"📞 CallSid: {call_sid}")
         logger.info(f"📞 StreamSid: {stream_sid}")
 
-        # ───── SERIALIZER CON DATOS DE TWILIO (EXACTO COMO EL EJEMPLO) ─────
+        # ───── SERIALIZER CON DATOS DE TWILIO ─────
         serializer = TwilioFrameSerializer(
             stream_sid=stream_sid,
             call_sid=call_sid,
@@ -55,45 +57,52 @@ async def _voice_call(ws: WebSocket):
         )
         logger.info("✅ Twilio serializer creado")
 
-        # ───── TRANSPORT SIMPLE (COMO EL EJEMPLO QUE FUNCIONA) ─────
+        # ───── VAD CONFIGURADO CORRECTAMENTE ─────
+        vad_analyzer = SileroVADAnalyzer(
+            sample_rate=8000,
+            params=VADParams(
+                confidence=0.7,
+                start_secs=0.2,
+                stop_secs=0.5,
+                min_volume=0.6
+            )
+        )
+        logger.info("✅ Silero VAD creado con parámetros optimizados")
+
+        # ───── TRANSPORT CON CONFIGURACIÓN CORRECTA ─────
         transport = FastAPIWebsocketTransport(
             websocket=ws,
             params=FastAPIWebsocketParams(
                 audio_in_enabled=True,
                 audio_out_enabled=True,
                 add_wav_header=False,
-                vad_analyzer=SileroVADAnalyzer(
-                        sample_rate=8000,
-                        confidence=0.6,
-                        start_secs=0.1,
-                        stop_secs=0.5,
-                ),  # SIN parámetros extras
+                vad_analyzer=vad_analyzer,
                 serializer=serializer,
-                # REMOVIDO: audio_out_sample_rate, buffering, etc.
+                audio_in_sample_rate=8000,
+                audio_out_sample_rate=8000,
             ),
         )
-        logger.info("✅ Transport creado (configuración simple)")
+        logger.info("✅ Transport creado (configuración correcta)")
 
-        # ───── SERVICIOS PRINCIPALES ─────
-        # Deepgram STT SIMPLE
+        # ───── DEEPGRAM STT CON CONFIGURACIÓN ACTUALIZADA ─────
         stt = DeepgramSTTService(
             api_key=os.getenv("DEEPGRAM_API_KEY"),
-            model="nova-2-general",    
-            language="es",  
-            audio_passthrough=False,  # ← AGREGAR esto
-            keep_alive=True,  # ← AGREGAR esto           
-            # REMOVIDO: smart_format, punctuate, sample_rate
+            sample_rate=8000,
+            live_options=LiveOptions(
+                model="nova-3-general",
+                language=Language.ES
+            )
         )
-        logger.info("✅ Deepgram STT creado")
+        logger.info("✅ Deepgram STT creado (configuración actualizada)")
         
-        # Groq LLM SIMPLE
+        # ───── GROQ LLM ─────
         llm = GroqLLMService(
             api_key=os.getenv("GROQ_API_KEY"), 
             model="llama-3.3-70b-versatile"
         )
         logger.info("✅ Groq LLM creado")
         
-        # Cartesia TTS SIMPLE (COMO EL EJEMPLO)
+        # ───── CARTESIA TTS ─────
         cartesia_api_key = os.getenv("CARTESIA_API_KEY")
         if not cartesia_api_key:
             logger.error("❌ CARTESIA_API_KEY no configurada")
@@ -102,13 +111,11 @@ async def _voice_call(ws: WebSocket):
         tts = CartesiaTTSService(
             api_key=cartesia_api_key,
             voice_id="308c82e1-ecef-48fc-b9f2-2b5298629789",
-            speed=0.75,  # Voz profesional
-            # REMOVIDO: output_format, sample_rate, stream_mode, chunk_ms
+            speed=0.75,
         )
-        logger.info("✅ Cartesia TTS creado (configuración simple)")
+        logger.info("✅ Cartesia TTS creado (velocidad optimizada)")
 
         # ───── CONTEXTO LLM ─────
-    
         messages = [
             {
                 "role": "system",
@@ -130,24 +137,21 @@ OBJETIVO DE LA LLAMADA:
 GUION A SEGUIR:
 
 APERTURA (usar SOLO después de que el prospecto hable primero y si aun el bot no ha saludado):
-"Buen día, le habla Freddy, de TDX. como estas hoy?" 
-
-Luego de que el cliente responda, continuar con:
-Lo estoy contactando porque estamos ayudando a líderes de tecnología a **reducir en un treinta por ciento** el tiempo que sus equipos dedican a tareas repetitivas y a acelerar la salida de prototipos. ¿Es un tema que está en su radar en este momento?"
+"Buen día, le habla Freddy, de TDX. ¿Cómo está? Lo estoy contactando porque estamos ayudando a líderes de tecnología a reducir en un treinta por ciento el tiempo que sus equipos dedican a tareas repetitivas y a acelerar la salida de prototipos. ¿Es un tema que está en su radar en este momento?"
 
 DESCUBRIMIENTO (usar estas preguntas según el flujo):
-- "Entendiendo ese desafío de las tareas repetitivas, ¿en qué procesos específicos su equipo de TI experimenta hoy más **cuellos de botella** por tickets o llamadas que les quitan foco?"
+- "Entendiendo ese desafío de las tareas repetitivas, ¿en qué procesos específicos su equipo de TI experimenta hoy más cuellos de botella por tickets o llamadas que les quitan foco?"
 - "Pensando en la agilidad, cuando necesitan lanzar un prototipo o MVP, ¿cuánto tiempo les toma hoy realmente sacarlo a producción y llevarlo al usuario final?"
-- "Hablando de eficiencia, ¿sus sistemas como CRM/ERP y canales como WhatsApp o voz conversan de forma fluida, o su equipo debe hacer muchos **amarres manuales** para que funcionen juntos?"
+- "Hablando de eficiencia, ¿sus sistemas como CRM/ERP y canales como WhatsApp o voz conversan de forma fluida, o su equipo debe hacer muchos amarres manuales para que funcionen juntos?"
 
 SOLUCIONES TDX (mapear directamente al dolor identificado):
-- Para **cuellos de botella** en soporte: "Justamente para liberar esa carga, TDX implementa **AI Chatbot Multiagente** o **AI Voice Assistant**; estas soluciones toman el **ochenta por ciento** de las interacciones repetitivas."
-- Para **tareas repetitivas**: "Para **quitarse de encima** esas labores que consumen tiempo valioso, utilizamos **Flujos de Automatización** y nuestro **AgentOps Framework**, optimizando procesos end-to-end."
-- Para la **velocidad de lanzamiento de MVPs**: "Si el desafío es la agilidad, con **MVP en quince días** y nuestra oferta de **SaaS Agentic**, podemos acelerar significativamente la puesta en marcha de sus innovaciones."
-- Para **amarres manuales** y **sistemas desintegrados**: "Si la fricción está en la integración, nuestra **Integración con CRM/ERP** y el **AI Assistant para WhatsApp** permiten una conectividad perfecta y eliminan esos procesos manuales."
+- Para cuellos de botella en soporte: "Justamente para liberar esa carga, TDX implementa AI Chatbot Multiagente o AI Voice Assistant; estas soluciones toman el ochenta por ciento de las interacciones repetitivas."
+- Para tareas repetitivas: "Para quitarse de encima esas labores que consumen tiempo valioso, utilizamos Flujos de Automatización y nuestro AgentOps Framework, optimizando procesos end-to-end."
+- Para la velocidad de lanzamiento de MVPs: "Si el desafío es la agilidad, con MVP en quince días y nuestra oferta de SaaS Agentic, podemos acelerar significativamente la puesta en marcha de sus innovaciones."
+- Para amarres manuales y sistemas desintegrados: "Si la fricción está en la integración, nuestra Integración con CRM/ERP y el AI Assistant para WhatsApp permiten una conectividad perfecta y eliminan esos procesos manuales."
 
 CIERRE:
-"Dado que identificamos [mencionar el dolor principal del prospecto], propongo una sesión de descubrimiento de **veinticinco minutos**. Allí podemos revisar a detalle sus flujos y le mostraré un caso real de TDX, similar al suyo, donde logramos resultados tangibles. ¿Le iría bien este jueves a las diez a.m. o prefiere el viernes a primera hora?"
+"Dado que identificamos [mencionar el dolor principal del prospecto], propongo una sesión de descubrimiento de veinticinco minutos. Allí podemos revisar a detalle sus flujos y le mostraré un caso real de TDX, similar al suyo, donde logramos resultados tangibles. ¿Le iría bien este jueves a las diez a.m. o prefiere el viernes a primera hora?"
 
 INSTRUCCIONES CRÍTICAS:
 - Si me interrumpen mientras hablo, parar inmediatamente y escuchar
@@ -165,50 +169,47 @@ INSTRUCCIONES CRÍTICAS:
             }
         ]
         
-        # CONTEXTO SIMPLE (COMO EL EJEMPLO)
+        # ───── CONTEXTO ─────
         context = OpenAILLMContext(messages)
         context_aggregator = llm.create_context_aggregator(context)
         logger.info("✅ Contexto de ventas B2B creado")
 
-        # ───── PIPELINE SIMPLE (EXACTO COMO EL EJEMPLO) ─────
+        # ───── PIPELINE ─────
         pipeline = Pipeline([
-            transport.input(),           # WebSocket input from client
-            stt,                        # Speech-To-Text
-            context_aggregator.user(),  # User context
-            llm,                        # LLM
-            tts,                        # Text-To-Speech
-            transport.output(),         # WebSocket output to client
-            context_aggregator.assistant(),  # Assistant context
+            transport.input(),
+            stt,
+            context_aggregator.user(),
+            llm,
+            tts,
+            transport.output(),
+            context_aggregator.assistant(),
         ])
-        logger.info("✅ Pipeline creado (configuración simple)")
+        logger.info("✅ Pipeline creado")
 
-        # ───── TASK SIMPLE (COMO EL EJEMPLO) ─────
+        # ───── TASK CON PARÁMETROS CORRECTOS ─────
         task = PipelineTask(
             pipeline,
             params=PipelineParams(
                 audio_in_sample_rate=8000,
                 audio_out_sample_rate=8000,
-                enable_metrics=True,
                 allow_interruptions=True,
+                enable_metrics=True,
                 enable_usage_metrics=True,
-                # REMOVIDO: allow_interruptions y otros parámetros
             ),
         )
         
-        # ───── EVENTOS SIMPLES (COMO EL EJEMPLO) ─────        
+        # ───── EVENTOS DE TRANSPORTE CORREGIDOS ─────        
         @transport.event_handler("on_client_connected")
         async def on_client_connected(transport, client):
-            logger.info(f"🔗 Cliente conectado: {client}"),
-        await task.queue_frames([context_aggregator.user().get_context_frame()])
-            
-         
+            logger.info(f"🔗 Cliente conectado: {client}")
+            await task.queue_frames([context_aggregator.user().get_context_frame()])
 
         @transport.event_handler("on_client_disconnected")
         async def on_client_disconnected(transport, client):
             logger.info(f"👋 Cliente desconectado: {client}")
             await task.cancel()
 
-        # ───── EJECUTAR RUNNER (EXACTO COMO EL EJEMPLO) ─────
+        # ───── EJECUTAR RUNNER ─────
         logger.info("🚀 Iniciando pipeline de ventas B2B...")
         runner = PipelineRunner(handle_sigint=False, force_gc=True)
         await runner.run(task)
@@ -274,7 +275,7 @@ async def health_check():
     return {
         "status": "healthy", 
         "service": "TDX Sales Bot - Deepgram + Groq + Cartesia",
-        "version": "2025-06-24-SALES-B2B-SIMPLE",
+        "version": "2025-06-24-SALES-B2B-CORREGIDO",
         "apis": {
             "deepgram": bool(os.getenv("DEEPGRAM_API_KEY")),
             "groq": bool(os.getenv("GROQ_API_KEY")),
@@ -282,9 +283,9 @@ async def health_check():
             "twilio": bool(os.getenv("TWILIO_ACCOUNT_SID")),
         },
         "services": {
-            "stt": "Deepgram Nova-2 Simple",
-            "llm": "Groq Llama 3.3 70B Simple", 
-            "tts": "Cartesia Simple",
+            "stt": "Deepgram Nova-3 con LiveOptions",
+            "llm": "Groq Llama 3.3 70B", 
+            "tts": "Cartesia optimizado",
             "purpose": "Sales Development Representative (SDR)"
         }
     }
