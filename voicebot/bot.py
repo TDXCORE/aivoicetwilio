@@ -26,8 +26,6 @@ from pipecat.frames.frames import TextFrame
 # Cargar variables de entorno
 load_dotenv(override=True)
 
-SAMPLE_RATE = 8000  # Twilio Media Streams
-
 # ──────────────────────────────────────────
 # 1) PIPELINE PARA LLAMADAS DE VOZ (WebSocket)
 # ──────────────────────────────────────────
@@ -48,7 +46,7 @@ async def _voice_call(ws: WebSocket):
         logger.info(f"📞 CallSid: {call_sid}")
         logger.info(f"📞 StreamSid: {stream_sid}")
 
-        # ───── SERIALIZER CON DATOS DE TWILIO ─────
+        # ───── SERIALIZER CON DATOS DE TWILIO (EXACTO COMO EL EJEMPLO) ─────
         serializer = TwilioFrameSerializer(
             stream_sid=stream_sid,
             call_sid=call_sid,
@@ -57,56 +55,51 @@ async def _voice_call(ws: WebSocket):
         )
         logger.info("✅ Twilio serializer creado")
 
-        # ───── SERVICIOS DEEPGRAM + GROQ + CARTESIA ─────
-        # Deepgram STT con debugging mejorado
-        class DeepgramSTTDebug(DeepgramSTTService):
-            async def process_frame(self, frame, direction):
-                result = await super().process_frame(frame, direction)
-                # Log todas las transcripciones para debugging
-                if hasattr(result, '__iter__'):
-                    for r in result:
-                        if hasattr(r, 'text') and r.text:
-                            logger.info(f"🎤 TRANSCRIPCIÓN DEEPGRAM: '{r.text}'")
-                elif result and hasattr(result, 'text') and result.text:
-                    logger.info(f"🎤 TRANSCRIPCIÓN DEEPGRAM: '{result.text}'")
-                return result
-        
-        stt = DeepgramSTTDebug(
+        # ───── TRANSPORT SIMPLE (COMO EL EJEMPLO QUE FUNCIONA) ─────
+        transport = FastAPIWebsocketTransport(
+            websocket=ws,
+            params=FastAPIWebsocketParams(
+                audio_in_enabled=True,
+                audio_out_enabled=True,
+                add_wav_header=False,
+                vad_analyzer=SileroVADAnalyzer(),  # SIN parámetros extras
+                serializer=serializer,
+                # REMOVIDO: audio_out_sample_rate, buffering, etc.
+            ),
+        )
+        logger.info("✅ Transport creado (configuración simple)")
+
+        # ───── SERVICIOS PRINCIPALES ─────
+        # Deepgram STT SIMPLE
+        stt = DeepgramSTTService(
             api_key=os.getenv("DEEPGRAM_API_KEY"),
             model="nova-2-general",    
             language="es",             
-            smart_format=True,         
-            punctuate=True,           
-            sample_rate=SAMPLE_RATE,
+            # REMOVIDO: smart_format, punctuate, sample_rate
         )
         logger.info("✅ Deepgram STT creado")
         
-        # Groq Llama 70B LLM
+        # Groq LLM SIMPLE
         llm = GroqLLMService(
             api_key=os.getenv("GROQ_API_KEY"), 
             model="llama-3.3-70b-versatile"
         )
-        logger.info("✅ Groq Llama 70B LLM creado")
+        logger.info("✅ Groq LLM creado")
         
-        # Cartesia TTS (optimizado para Twilio)
+        # Cartesia TTS SIMPLE (COMO EL EJEMPLO)
         cartesia_api_key = os.getenv("CARTESIA_API_KEY")
         if not cartesia_api_key:
             logger.error("❌ CARTESIA_API_KEY no configurada")
             raise ValueError("CARTESIA_API_KEY requerida")
             
-        logger.info("🎵 Configurando Cartesia TTS...")
-        
-        # CORRECCIÓN 1: Configuración correcta para Twilio
         tts = CartesiaTTSService(
             api_key=cartesia_api_key,
             voice_id="308c82e1-ecef-48fc-b9f2-2b5298629789",  # Voz profesional
-            output_format="mulaw",  # CAMBIO: mulaw en lugar de ulaw_8000
-            sample_rate=8000,
-            # CORRECCIÓN 2: Remover stream_mode y chunk_ms que pueden causar problemas
+            # REMOVIDO: output_format, sample_rate, stream_mode, chunk_ms
         )
-        logger.info("✅ Cartesia TTS creado (optimizado para Twilio)")
+        logger.info("✅ Cartesia TTS creado (configuración simple)")
 
-        # ───── CONTEXTO LLM PARA VENTAS B2B ─────
+        # ───── CONTEXTO LLM ─────
         messages = [
             {
                 "role": "system",
@@ -150,106 +143,64 @@ INSTRUCCIONES CRÍTICAS:
 - Escuchar 70%, hablar 30%
 - Siempre buscar agendar la reunión
 - Usar vocabulario formal-colombiano: "cuello de botella", "amarres", "quitarse de encima"
-- Respuestas máximo 2 oraciones para mantener fluidez"""
+- Respuestas máximo 2 oraciones para mantener fluidez
+- No incluir caracteres especiales en las respuestas ya que se convertirán a audio"""
             }
         ]
-        context = OpenAILLMContext(messages, NOT_GIVEN)
-        ctx_aggr = llm.create_context_aggregator(context)
+        
+        # CONTEXTO SIMPLE (COMO EL EJEMPLO)
+        context = OpenAILLMContext(messages)
+        context_aggregator = llm.create_context_aggregator(context)
         logger.info("✅ Contexto de ventas B2B creado")
 
-        # ───── VAD CONFIGURADO CORRECTAMENTE ─────
-        # CORRECCIÓN 3: Configuración VAD más estable
-        vad = SileroVADAnalyzer(
-            sample_rate=SAMPLE_RATE,
-            params={
-                "confidence": 0.7,
-                "start_secs": 0.2,
-                "stop_secs": 0.8,
-                "min_volume": 0.6
-            }
-        )
-        logger.info("✅ Silero VAD creado con parámetros optimizados")
-
-        # ───── TRANSPORT OPTIMIZADO ─────
-        # CORRECCIÓN 4: Configuración de transport más estable
-        transport = FastAPIWebsocketTransport(
-            websocket=ws,
-            params=FastAPIWebsocketParams(
-                audio_in_enabled=True,
-                audio_out_enabled=True,
-                add_wav_header=False,
-                vad_analyzer=vad,
-                serializer=serializer,
-                audio_out_sample_rate=8000,
-                # CORRECCIÓN 5: Agregar buffering para estabilidad
-                audio_in_buffer_size=8192,
-                audio_out_buffer_size=8192,
-            ),
-        )
-        logger.info("✅ Transport creado con buffering optimizado")
-
-        # ───── PIPELINE OPTIMIZADO PARA VENTAS ─────
+        # ───── PIPELINE SIMPLE (EXACTO COMO EL EJEMPLO) ─────
         pipeline = Pipeline([
-            transport.input(),      # WebSocket Twilio
-            stt,                   # Deepgram STT con debugging
-            ctx_aggr.user(),       # Contexto usuario
-            llm,                   # Groq Llama con prompt de ventas
-            tts,                   # Cartesia TTS profesional
-            transport.output(),    # De vuelta a Twilio
-            ctx_aggr.assistant(),  # Contexto asistente
+            transport.input(),           # WebSocket input from client
+            stt,                        # Speech-To-Text
+            context_aggregator.user(),  # User context
+            llm,                        # LLM
+            tts,                        # Text-To-Speech
+            transport.output(),         # WebSocket output to client
+            context_aggregator.assistant(),  # Assistant context
         ])
-        logger.info("✅ Pipeline optimizado para ventas creado")
+        logger.info("✅ Pipeline creado (configuración simple)")
 
-        # ───── TASK CON INTERRUPCIONES OPTIMIZADAS ─────
-        # CORRECCIÓN 6: Parámetros más conservadores
+        # ───── TASK SIMPLE (COMO EL EJEMPLO) ─────
         task = PipelineTask(
             pipeline,
             params=PipelineParams(
-                allow_interruptions=True,
-                enable_metrics=True,
-                # CORRECCIÓN 7: Especificar rates explícitamente
                 audio_in_sample_rate=8000,
                 audio_out_sample_rate=8000,
-                enable_usage_metrics=False,  # Deshabilitar para reducir overhead
+                enable_metrics=True,
+                enable_usage_metrics=True,
+                # REMOVIDO: allow_interruptions y otros parámetros
             ),
         )
         
-        # ───── EVENTOS DE TRANSPORTE CON MÁS LOGGING ─────        
+        # ───── EVENTOS SIMPLES (COMO EL EJEMPLO) ─────        
         @transport.event_handler("on_client_connected")
         async def on_client_connected(transport, client):
             logger.info(f"🔗 Cliente conectado: {client}")
-            logger.info("⏳ Esperando que el cliente hable primero...")
-            # NO enviar saludo automático - esperar a que el cliente hable primero
-            await task.queue_frames([ctx_aggr.user().get_context_frame()])
+            # IGUAL QUE EL EJEMPLO: agregar mensaje del sistema y hacer queue
+            messages.append({
+                "role": "system", 
+                "content": "El cliente acaba de conectarse. Espera a que diga algo primero como 'Hola' o 'Buenos días' antes de responder con tu apertura comercial."
+            })
+            await task.queue_frames([context_aggregator.user().get_context_frame()])
 
         @transport.event_handler("on_client_disconnected")
         async def on_client_disconnected(transport, client):
             logger.info(f"👋 Cliente desconectado: {client}")
             await task.cancel()
 
-        # CORRECCIÓN 8: Agregar más event handlers para debugging
-        @transport.event_handler("on_audio_stream_started")
-        async def on_audio_stream_started(transport):
-            logger.info("🎵 Stream de audio iniciado")
-
-        @transport.event_handler("on_audio_stream_stopped")  
-        async def on_audio_stream_stopped(transport):
-            logger.info("🔇 Stream de audio detenido")
-
-        # ───── EJECUTAR PIPELINE ─────
+        # ───── EJECUTAR RUNNER (EXACTO COMO EL EJEMPLO) ─────
         logger.info("🚀 Iniciando pipeline de ventas B2B...")
-        runner = PipelineRunner(handle_sigint=False)
+        runner = PipelineRunner(handle_sigint=False, force_gc=True)
         await runner.run(task)
         logger.info("📞 Llamada de ventas finalizada")
         
     except Exception as e:
         logger.exception(f"💥 Error en pipeline de ventas: {e}")
-        # CORRECCIÓN 9: Cleanup explícito en caso de error
-        try:
-            if 'task' in locals():
-                await task.cancel()
-        except:
-            pass
         raise
 
 
@@ -281,7 +232,7 @@ async def _sms(request: Request) -> Response:
                 "role": "user",
                 "content": user_msg
             }
-        ], NOT_GIVEN)
+        ])
         
         # Generar respuesta
         response = await llm._process_context(context)
@@ -308,7 +259,7 @@ async def health_check():
     return {
         "status": "healthy", 
         "service": "TDX Sales Bot - Deepgram + Groq + Cartesia",
-        "version": "2025-06-24-SALES-B2B-FIXED",
+        "version": "2025-06-24-SALES-B2B-SIMPLE",
         "apis": {
             "deepgram": bool(os.getenv("DEEPGRAM_API_KEY")),
             "groq": bool(os.getenv("GROQ_API_KEY")),
@@ -316,9 +267,9 @@ async def health_check():
             "twilio": bool(os.getenv("TWILIO_ACCOUNT_SID")),
         },
         "services": {
-            "stt": "Deepgram Nova-2 General con Debug",
-            "llm": "Groq Llama 3.3 70B con Script de Ventas", 
-            "tts": "Cartesia Voz Profesional",
+            "stt": "Deepgram Nova-2 Simple",
+            "llm": "Groq Llama 3.3 70B Simple", 
+            "tts": "Cartesia Simple",
             "purpose": "Sales Development Representative (SDR)"
         }
     }
