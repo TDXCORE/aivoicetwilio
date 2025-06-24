@@ -125,18 +125,19 @@ APERTURA (usar SOLO después de que el prospecto hable primero):
 "Buen día, le habla Freddy, de TDX. Lo estoy contactando porque estamos ayudando a líderes de tecnología a reducir en un 30% el tiempo que sus equipos dedican a tareas repetitivas y a acelerar la salida de prototipos. ¿Es un tema que está en su radar en este momento?"
 
 DESCUBRIMIENTO (usar estas preguntas según el flujo):
-- "Entendiendo ese desafío de las tareas repetitivas, ¿en qué procesos específicos su equipo de TI experimenta hoy más **cuellos de botella** por tickets o llamadas que les quitan foco?"
-- "Pensando en la agilidad, cuando necesitan lanzar un prototipo o MVP, ¿cuánto tiempo les toma hoy realmente sacarlo a producción y llevarlo al usuario final?"
-- "Hablando de eficiencia, ¿sus sistemas como CRM/ERP y canales como WhatsApp o voz conversan de forma fluida, o su equipo debe hacer muchos **amarres manuales** para que funcionen juntos?"
+- "¿En qué procesos siente hoy más atascos de tickets o llamadas que le quitan foco a su equipo?"
+- "¿Qué tareas repetitivas le gustaría quitarse de encima en el próximo trimestre?"
+- "Cuando necesita un prototipo o MVP, ¿cuánto se demora hoy en sacarlo a producción?"
+- "¿Sus CRM/ERP y canales como WhatsApp o voz conversan de forma fluida o toca hacer amarres manuales?"
 
-SOLUCIONES TDX (mapear directamente al dolor identificado):
-- Para **cuellos de botella** en soporte: "Justamente para liberar esa carga, TDX implementa **AI Chatbot Multiagente** o **AI Voice Assistant**; estas soluciones toman el 80% de las interacciones repetitivas."
-- Para **tareas repetitivas**: "Para **quitarse de encima** esas labores que consumen tiempo valioso, utilizamos **Flujos de Automatización** y nuestro **AgentOps Framework**, optimizando procesos end-to-end."
-- Para la **velocidad de lanzamiento de MVPs**: "Si el desafío es la agilidad, con **MVP en 15 días** y nuestra oferta de **SaaS Agentic**, podemos acelerar significativamente la puesta en marcha de sus innovaciones."
-- Para **amarres manuales** y **sistemas desintegrados**: "Si la fricción está en la integración, nuestra **Integración con CRM/ERP** y el **AI Assistant para WhatsApp** permiten una conectividad perfecta y eliminan esos procesos manuales."
+SOLUCIONES TDX:
+- AI Chatbot Multiagente / AI Voice Assistant (para soporte)
+- Flujos de Automatización / AgentOps Framework (tareas repetitivas)
+- MVP en 15 días + SaaS Agentic (time-to-market)
+- Integración CRM/ERP + AI Assistant WhatsApp (integraciones)
 
 CIERRE:
-"Dado que identificamos (mencionar el dolor principal del prospecto), propongo una sesión de descubrimiento de 25 minutos. Allí podemos revisar a detalle sus flujos y le mostraré un caso real de TDX, similar al suyo, donde logramos resultados tangibles. ¿Le iría bien este jueves a las 10 a.m. o prefiere el viernes a primera hora?"
+"Propongo que tengamos una sesión de descubrimiento de 25 min: reviso a detalle sus flujos y le muestro un caso similar al suyo. ¿Le va bien este jueves a las 10 a.m. o prefiere viernes a primera hora?"
 
 INSTRUCCIONES CRÍTICAS:
 - NUNCA saludar hasta que el prospecto hable primero
@@ -151,14 +152,9 @@ INSTRUCCIONES CRÍTICAS:
         ctx_aggr = llm.create_context_aggregator(context)
         logger.info("✅ Contexto de ventas B2B creado")
 
-        # ───── VAD OPTIMIZADO PARA VENTAS ─────
-        vad = SileroVADAnalyzer(
-            sample_rate=SAMPLE_RATE,
-            min_volume=0.7,        # Más sensible para captar mejor
-            min_confidence=0.8,    # Mayor precisión
-            min_quiet_frames=8,    # Detección más rápida de pausas
-        )
-        logger.info("✅ Silero VAD optimizado creado")
+        # ───── VAD SIMPLE (usando solo parámetros válidos) ─────
+        vad = SileroVADAnalyzer(sample_rate=SAMPLE_RATE)
+        logger.info("✅ Silero VAD creado")
 
         # ───── TRANSPORT OPTIMIZADO ─────
         transport = FastAPIWebsocketTransport(
@@ -197,9 +193,7 @@ INSTRUCCIONES CRÍTICAS:
             ),
         )
         
-        # ───── EVENTOS DE TRANSPORTE ─────
-        user_has_spoken = False  # Flag para detectar si el usuario ya habló
-        
+        # ───── EVENTOS DE TRANSPORTE ─────        
         @transport.event_handler("on_client_connected")
         async def on_client_connected(transport, client):
             logger.info(f"🔗 Cliente conectado: {client}")
@@ -212,17 +206,10 @@ INSTRUCCIONES CRÍTICAS:
             await task.cancel()
 
         # ───── MANEJO ESPECIAL DEL PRIMER SALUDO ─────
-        async def handle_first_user_input():
-            nonlocal user_has_spoken
-            if not user_has_spoken:
-                user_has_spoken = True
-                logger.info("👋 Usuario habló primero - activando saludo profesional")
-                # El LLM ya tiene el contexto para dar el saludo según el script
+        user_has_spoken = False  # Flag para detectar si el usuario ya habló
         
-        # Monitor para detectar la primera entrada del usuario
-        @transport.event_handler("on_first_user_started_speaking")
-        async def on_first_user_speaking(transport):
-            await handle_first_user_input()
+        # El manejo del primer saludo se hace automáticamente por el LLM
+        # cuando recibe la primera transcripción del usuario
 
         # ───── EJECUTAR PIPELINE ─────
         logger.info("🚀 Iniciando pipeline de ventas B2B...")
