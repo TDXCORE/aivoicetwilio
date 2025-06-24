@@ -110,7 +110,7 @@ async def _voice_call(ws: WebSocket):
             
         tts = ElevenLabsTTSService(
             api_key=elevenlabs_api_key,
-            voice_id="yvNNEO8EIbfE6QBiyLQx",  # Adam voice (spanish compatible)
+            voice_id="qHkrJuifPpn95wK3rm2A",  # Adam voice (spanish compatible)
             model="eleven_flash_v2_5",  # Ultra-fast model optimized for real-time
             language="es",  # Español
             stability=0.4,  # Menor estabilidad para mayor velocidad
