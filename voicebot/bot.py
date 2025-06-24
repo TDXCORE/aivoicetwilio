@@ -61,7 +61,7 @@ async def _voice_call(ws: WebSocket):
         # Groq Whisper STT
         stt = GroqSTTService(
             api_key=os.getenv("GROQ_API_KEY"),
-            model="whisper-large-v3",
+            model="whisper-large-v3-turbo",
             language="es",
             temperature=0
         )
