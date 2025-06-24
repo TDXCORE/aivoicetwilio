@@ -95,12 +95,13 @@ async def _voice_call(ws: WebSocket):
         tts = CartesiaTTSService(
             api_key=cartesia_api_key,
             voice_id="308c82e1-ecef-48fc-b9f2-2b5298629789",
-            speed=0.9,  # Voz profesional
+            speed=0.75,  # Voz profesional
             # REMOVIDO: output_format, sample_rate, stream_mode, chunk_ms
         )
         logger.info("✅ Cartesia TTS creado (configuración simple)")
 
         # ───── CONTEXTO LLM ─────
+    
         messages = [
             {
                 "role": "system",
@@ -139,6 +140,10 @@ CIERRE:
 "Dado que identificamos [mencionar el dolor principal del prospecto], propongo una sesión de descubrimiento de **veinticinco minutos**. Allí podemos revisar a detalle sus flujos y le mostraré un caso real de TDX, similar al suyo, donde logramos resultados tangibles. ¿Le iría bien este jueves a las diez a.m. o prefiere el viernes a primera hora?"
 
 INSTRUCCIONES CRÍTICAS:
+- Si me interrumpen mientras hablo, parar inmediatamente y escuchar
+- Si el usuario dice "Hola" múltiples veces, reconocer que ya me presenté
+- Mantener el flujo natural de la conversación sin repetir la apertura
+- Si ya hice la apertura, continuar con descubrimiento según la respuesta
 - NO responder hasta que recibas un mensaje del usuario
 - Solo responder cuando el cliente haya hablado primero
 - Seguir el guion paso a paso después de que el cliente hable
@@ -185,7 +190,7 @@ INSTRUCCIONES CRÍTICAS:
         async def on_client_connected(transport, client):
             logger.info(f"🔗 Cliente conectado: {client}")
             
-            await task.queue_frames([context_aggregator.user().get_context_frame()])
+         
 
         @transport.event_handler("on_client_disconnected")
         async def on_client_disconnected(transport, client):
