@@ -94,7 +94,8 @@ async def _voice_call(ws: WebSocket):
             
         tts = CartesiaTTSService(
             api_key=cartesia_api_key,
-            voice_id="308c82e1-ecef-48fc-b9f2-2b5298629789",  # Voz profesional
+            voice_id="308c82e1-ecef-48fc-b9f2-2b5298629789",
+            speed=0.9,  # Voz profesional
             # REMOVIDO: output_format, sample_rate, stream_mode, chunk_ms
         )
         logger.info("✅ Cartesia TTS creado (configuración simple)")
@@ -173,6 +174,7 @@ INSTRUCCIONES CRÍTICAS:
                 audio_in_sample_rate=8000,
                 audio_out_sample_rate=8000,
                 enable_metrics=True,
+                allow_interruptions=True,
                 enable_usage_metrics=True,
                 # REMOVIDO: allow_interruptions y otros parámetros
             ),
@@ -182,11 +184,7 @@ INSTRUCCIONES CRÍTICAS:
         @transport.event_handler("on_client_connected")
         async def on_client_connected(transport, client):
             logger.info(f"🔗 Cliente conectado: {client}")
-            # IGUAL QUE EL EJEMPLO: agregar mensaje del sistema y hacer queue
-            messages.append({
-                "role": "system", 
-                "content": "Buen día, le habla Freddy, de TDX. ¿Cómo está?"
-            })
+            
             await task.queue_frames([context_aggregator.user().get_context_frame()])
 
         @transport.event_handler("on_client_disconnected")
