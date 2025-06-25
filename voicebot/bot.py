@@ -40,7 +40,7 @@ def create_ultra_fast_tts_service():
             tts = ElevenLabsTTSService(
                 api_key=elevenlabs_api_key,
                 voice_id="qHkrJuifPpn95wK3rm2A",  # ANDREA MEDELLIN COLOMBIA
-                model="eleven_flash_v2_5",  # MODELO MÁS RÁPIDO DISPONIBLE
+                model="eleven_v3",  # MODELO MÁS RÁPIDO DISPONIBLE
                 language="es",
                 stability=0.4,  # Menor estabilidad = mayor velocidad
                 similarity_boost=0.75,  # Reducido para velocidad
