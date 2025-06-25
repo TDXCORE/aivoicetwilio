@@ -37,8 +37,8 @@ async def _voice_call(ws: WebSocket):
     try:
         # ───── TWILIO HANDSHAKE (necesario para Media Streams) ─────
         start_iter = ws.iter_text()
-        await start_iter._anext_()  # handshake message
-        start_msg = await start_iter._anext_()  # start message
+        await start_iter.__anext__()  # handshake message
+        start_msg = await start_iter.__anext__()  # start message
         start_data = json.loads(start_msg)
         
         stream_sid = start_data["start"]["streamSid"]
