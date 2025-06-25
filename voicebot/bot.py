@@ -119,7 +119,7 @@ async def _voice_call(ws: WebSocket):
         messages = [
             {
                 "role": "system",
-                "content": """# Guion de Llamada con Soluciones TDX
+                "content": """ Guion de Llamada con Soluciones TDX
 
 ## **PERSONAJE: Freddy, SDR de TDX**
 
