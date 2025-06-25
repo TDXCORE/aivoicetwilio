@@ -43,8 +43,8 @@ def create_ultra_fast_tts_service():
                 model="eleven_flash_v2_5",  # MODELO MÁS RÁPIDO DISPONIBLE
                 language="es",
                 stability=0.4,  # Menor estabilidad = mayor velocidad
-                similarity_boost=0.75,  # Reducido para velocidad
-                style=0.8,  # Sin estilo para mayor velocidad
+                similarity_boost=0.60,  # Reducido para velocidad
+                style=1,  # Sin estilo para mayor velocidad
                 use_speaker_boost=False,  # Desactivado para velocidad
                 output_format="pcm_8000",
                 optimize_streaming_latency=4,  # Máxima optimización
