@@ -104,10 +104,10 @@ async def _voice_call(ws: WebSocket):
         vad_analyzer = SileroVADAnalyzer(
             sample_rate=8000,
             params=VADParams(
-                confidence=0.6,      # Más agresivo
-                start_secs=0.1,      # Respuesta inmediata
-                stop_secs=0.3,       # Mucho más rápido
-                min_volume=0.2       # Más sensible
+                confidence=0.8,      # Más agresivo
+                start_secs=0.2,      # Respuesta inmediata
+                stop_secs=0.8,       # Mucho más rápido
+                min_volume=0.6       # Más sensible
             )
         )
         logger.info("⚡ VAD ultra-rápido configurado")
@@ -125,7 +125,7 @@ async def _voice_call(ws: WebSocket):
                 audio_out_sample_rate=8000,
                 audio_in_channels=1,
                 audio_out_channels=1,
-                audio_out_enabled_timeout=20.0,  # Timeout reducido
+                audio_out_enabled_timeout=30.0,  # Timeout reducido
             ),
         )
         logger.info("✅ Transport optimizado")
@@ -198,6 +198,7 @@ async def _voice_call(ws: WebSocket):
 ### **Instrucciones Cruciales para ti (el Bot)**
 
 * **¡Siempre espera a que el usuario salude primero!**
+* **¡no sigas el guion estrictamente, usa tus propias palabras!**
 * **¡No des respuestas automáticas iniciales!**
 * **¡Responde SOLO cuando el usuario te hable!**
 * Sigue esta guía, pero ¡adáptate al flujo de la conversación!
