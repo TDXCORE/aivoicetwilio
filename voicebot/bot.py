@@ -39,7 +39,7 @@ def create_ultra_fast_tts_service():
             logger.info("🚀 Configurando ElevenLabs ULTRA-RÁPIDO...")
             tts = ElevenLabsTTSService(
                 api_key=elevenlabs_api_key,
-                voice_id="NMi2tSeXKgzc8siZ0yTx",  # ANDREA MEDELLIN COLOMBIA
+                voice_id="qHkrJuifPpn95wK3rm2A",  # ANDREA MEDELLIN COLOMBIA
                 model="eleven_flash_v2_5",  # MODELO MÁS RÁPIDO DISPONIBLE
                 language="es",
                 stability=0.2,  # Menor estabilidad = mayor velocidad
