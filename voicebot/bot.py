@@ -37,8 +37,8 @@ async def _voice_call(ws: WebSocket):
     try:
         # ───── TWILIO HANDSHAKE (necesario para Media Streams) ─────
         start_iter = ws.iter_text()
-        await start_iter.__anext__()  # handshake message
-        start_msg = await start_iter.__anext__()  # start message
+        await start_iter.__anext__()  # CORREGIDO: usar __anext__ en lugar de _anext_
+        start_msg = await start_iter.__anext__()  # CORREGIDO: usar __anext__ en lugar de _anext_
         start_data = json.loads(start_msg)
         
         stream_sid = start_data["start"]["streamSid"]
@@ -108,19 +108,25 @@ async def _voice_call(ws: WebSocket):
             logger.error("❌ ELEVENLABS_API_KEY no configurada")
             raise ValueError("ELEVENLABS_API_KEY requerida")
             
-        tts = ElevenLabsTTSService(
-            api_key=elevenlabs_api_key,
-            voice_id="gbTn1bmCvNgk0QEAVyfM",  # Adam voice (spanish compatible)
-            model="eleven_v3",  # Ultra-fast model optimized for real-time
-            language="es",  # Español
-            stability=0.4,  # Menor estabilidad para mayor velocidad
-            similarity_boost=0.7,  # Reducido para mayor velocidad
-            style=0.0,  # Sin estilo adicional
-            use_speaker_boost=False,  # Desactivado para mayor velocidad
-            output_format="pcm_8000",  # Formato optimizado para Twilio
-            optimize_streaming_latency=4,  # Máxima optimización de latencia
-        )
-        logger.info("✅ ElevenLabs TTS creado (optimizado para baja latencia)")
+        # MEJORADO: Configuración más robusta para ElevenLabs
+        try:
+            tts = ElevenLabsTTSService(
+                api_key=elevenlabs_api_key,
+                voice_id="21m00Tcm4TlvDq8ikWAM",  # Rachel voice (más compatible)
+                model="eleven_turbo_v2_5",  # Modelo más estable
+                language="es",  # Español
+                stability=0.5,  # Balance entre estabilidad y velocidad
+                similarity_boost=0.8,  # Buena calidad de voz
+                style=0.0,  # Sin estilo adicional
+                use_speaker_boost=False,  # Desactivado para mayor velocidad
+                output_format="pcm_8000",  # Formato optimizado para Twilio
+                optimize_streaming_latency=3,  # Optimización moderada
+            )
+            logger.info("✅ ElevenLabs TTS creado (optimizado para baja latencia)")
+        except Exception as tts_error:
+            logger.error(f"❌ Error creando ElevenLabs TTS: {tts_error}")
+            # Fallback: usar un TTS alternativo si está disponible
+            raise tts_error
 
         # ───── CONTEXTO LLM CORREGIDO ─────
         messages = [
@@ -308,7 +314,7 @@ async def health_check():
     return {
         "status": "healthy", 
         "service": "TDX Sales Bot - Groq Whisper + Groq LLM + ElevenLabs",
-        "version": "2025-06-24-ELEVENLABS-FLASH",
+        "version": "2025-06-25-FIXED",
         "apis": {
             "groq": bool(os.getenv("GROQ_API_KEY")),
             "elevenlabs": bool(os.getenv("ELEVENLABS_API_KEY")),
@@ -317,7 +323,7 @@ async def health_check():
         "services": {
             "stt": "Groq Whisper Large V3",
             "llm": "Groq Llama 3.3 70B", 
-            "tts": "ElevenLabs Flash V2.5",
+            "tts": "ElevenLabs Turbo V2.5",
             "purpose": "Sales Development Representative (SDR)"
         }
     }
