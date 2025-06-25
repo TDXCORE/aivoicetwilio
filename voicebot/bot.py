@@ -142,7 +142,7 @@ async def _voice_call(ws: WebSocket):
         # ───── GROQ LLM OPTIMIZADO ─────
         llm = GroqLLMService(
             api_key=os.getenv("GROQ_API_KEY"), 
-            model="llama-3.3-70b-versatile"
+            model="llama3-70b-8192"
         )
         logger.info("✅ Groq LLM optimizado")
         
