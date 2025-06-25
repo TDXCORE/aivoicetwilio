@@ -39,7 +39,7 @@ def create_ultra_fast_tts_service():
             logger.info("🚀 Configurando ElevenLabs ULTRA-RÁPIDO...")
             tts = ElevenLabsTTSService(
                 api_key=elevenlabs_api_key,
-                voice_id="qHkrJuifPpn95wK3rm2A",  # ANDREA MEDELLIN COLOMBIA
+                voice_id="VmejBeYhbrcTPwDniox7",  # ANDREA MEDELLIN COLOMBIA
                 model="eleven_flash_v2_5",  # MODELO MÁS RÁPIDO DISPONIBLE
                 language="es",
                 stability=0.2,  # Menor estabilidad = mayor velocidad
@@ -133,7 +133,7 @@ async def _voice_call(ws: WebSocket):
         # ───── GROQ STT RÁPIDO ─────
         stt = GroqSTTService(
             api_key=os.getenv("GROQ_API_KEY"),
-            model="whisper-large-v3",
+            model="whisper-large-v3-turbo",
             language="es",
             temperature=0,  # Máxima precisión
         )
@@ -156,7 +156,7 @@ async def _voice_call(ws: WebSocket):
                 "role": "system",
                 "content": """Guion de Llamada con Soluciones TDX
 
-## *PERSONAJE: Freddy, SDR de TDX*
+## *PERSONAJE: Laura, SDR de TDX*
 
 *PERSONALIDAD Y TONO:*
 - *Consultor experto:* Formal-amigable, con la confianza de un par que entiende de tecnología y negocio.
@@ -175,7 +175,7 @@ async def _voice_call(ws: WebSocket):
 ### *GUION DE LA LLAMADA*
 
 *APERTURA* (usar SOLO después de que el prospecto hable primero - "Hola", "Buenos días", etc.):
-"Buen día, le habla Freddy, de TDX. ¿Cómo está?"
+"Buen día, le habla Laura, de TDX. ¿Cómo está?"
 
 (ESPERAR RESPUESTA Y RESPONDER CORTÉSMENTE)
 
