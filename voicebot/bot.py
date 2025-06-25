@@ -18,7 +18,7 @@ from pipecat.serializers.twilio import TwilioFrameSerializer
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
 from pipecat.services.groq.stt import GroqSTTService
-from pipecat.services.groq.llm import GroqLLMService
+from pipecat.services.openai.llm import OpenAILLMService
 from pipecat.services.elevenlabs.tts import ElevenLabsTTSService
 from pipecat.services.openai.tts import OpenAITTSService
 from pipecat.processors.aggregators.openai_llm_context import OpenAILLMContext
@@ -139,12 +139,12 @@ async def _voice_call(ws: WebSocket):
         )
         logger.info("✅ Groq STT rápido")
         
-        # ───── GROQ LLM OPTIMIZADO ─────
-        llm = GroqLLMService(
-            api_key=os.getenv("GROQ_API_KEY"), 
-            model="llama3-70b-8192"
+        # ───── OPENAI LLM O4-MINI ─────
+        llm = OpenAILLMService(
+            api_key=os.getenv("OPENAI_API_KEY"), 
+            model="o4-mini"
         )
-        logger.info("✅ Groq LLM optimizado")
+        logger.info("✅ OpenAI o4-mini optimizado")
         
         # ───── TTS ULTRA-RÁPIDO ─────
         tts, tts_provider = create_ultra_fast_tts_service()
@@ -245,9 +245,9 @@ async def _sms(request: Request) -> Response:
         
         logger.info(f"💬 SMS de {from_number}: '{user_msg}'")
 
-        llm = GroqLLMService(
-            api_key=os.getenv("GROQ_API_KEY"),
-            model="llama-3.3-70b-versatile"
+        llm = OpenAILLMService(
+            api_key=os.getenv("OPENAI_API_KEY"),
+            model="o4-mini"
         )
         
         context = OpenAILLMContext([
@@ -302,7 +302,7 @@ async def health_check():
         },
         "services": {
             "stt": "Groq Whisper Ultra-Fast",
-            "llm": "Groq Llama 3.3 (Adaptativo)", 
+            "llm": "OpenAI o4-mini",
             "tts": tts_status,
             "voice": "ANDREA MEDELLIN (Flash Mode)",
             "purpose": "Ultra-Fast Adaptive SDR"
