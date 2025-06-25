@@ -37,7 +37,7 @@ async def _voice_call(ws: WebSocket):
     try:
         # ───── TWILIO HANDSHAKE (necesario para Media Streams) ─────
         start_iter = ws.iter_text()
-        await start_iter.__anext__()  # handshake message
+        await start_iter.__anext__()  # CORREGIDO: __anext__() no _anext_()
         start_msg = await start_iter.__anext__()  # start message
         start_data = json.loads(start_msg)
         
@@ -109,7 +109,7 @@ async def _voice_call(ws: WebSocket):
             
         tts = CartesiaTTSService(
             api_key=cartesia_api_key,
-            voice_id="a947d150-da06-4d02-8a43-f56d89da6ffd",
+            voice_id="a947d150-da06-4d02-8a43-f56d89da6ffd",  # Voice ID que funcionaba
             speed=0.8,  # Velocidad más natural
             sample_rate=8000,
         )
@@ -139,9 +139,9 @@ GUION A SEGUIR:
 APERTURA (usar SOLO después de que el prospecto hable primero):
 "Buen día, le habla Freddy, de TDX. ¿Cómo está? 
 
-(esperar respuesta del prospecto)
+(ESPERAR RESPUESTA DEL PROSPECTO)
 
-INTRODUCCION:
+INSTRUCCIONES:
 Lo estoy contactando porque estamos ayudando a líderes de tecnología a reducir en un treinta por ciento el tiempo que sus equipos dedican a tareas repetitivas y a acelerar la salida de prototipos. ¿Es un tema que está en su radar en este momento?"
 
 DESCUBRIMIENTO (usar estas preguntas según el flujo):
@@ -218,10 +218,20 @@ INSTRUCCIONES CRÍTICAS:
             logger.info(f"👋 Cliente desconectado: {client}")
             await task.cancel()
 
-        # ───── EVENTOS PARA DEBUGGING DE STT ─────
-        @stt.event_handler("on_transcript")
-        async def on_transcript(stt, transcript):
-            logger.info(f"🎯 Groq Whisper transcripción: '{transcript}'")
+        # ───── EVENTOS PARA DEBUGGING DE STT (CORREGIDO) ─────
+        try:
+            @stt.event_handler("on_transcript")
+            async def on_transcript(stt, transcript):
+                logger.info(f"🎯 Groq Whisper transcripción: '{transcript}'")
+        except Exception as e:
+            logger.warning(f"⚠️ No se pudo registrar event handler on_transcript: {e}")
+            # Intentar con eventos alternativos
+            try:
+                @stt.event_handler("on_stt_final")
+                async def on_stt_final(stt, text):
+                    logger.info(f"🎯 Groq Whisper transcripción final: '{text}'")
+            except:
+                logger.warning("⚠️ Eventos STT no disponibles, continuando sin logging de transcripciones")
 
         # ───── EJECUTAR RUNNER ─────
         logger.info("🚀 Iniciando pipeline de ventas B2B con Groq Whisper...")
@@ -231,6 +241,12 @@ INSTRUCCIONES CRÍTICAS:
         
     except Exception as e:
         logger.exception(f"💥 Error en pipeline de ventas: {e}")
+        # Cierre limpio de WebSocket
+        try:
+            if not ws.client_state.DISCONNECTED:
+                await ws.close()
+        except:
+            pass
         raise
 
 
@@ -289,7 +305,7 @@ async def health_check():
     return {
         "status": "healthy", 
         "service": "TDX Sales Bot - Groq Whisper + Groq LLM + Cartesia",
-        "version": "2025-06-24-GROQ-WHISPER",
+        "version": "2025-06-25-GROQ-WHISPER-CLEAN",
         "apis": {
             "groq": bool(os.getenv("GROQ_API_KEY")),
             "cartesia": bool(os.getenv("CARTESIA_API_KEY")),
