@@ -20,7 +20,7 @@ from pipecat.audio.vad.vad_analyzer import VADParams
 from pipecat.services.groq.stt import GroqSTTService
 from pipecat.services.groq.llm import GroqLLMService
 from pipecat.services.elevenlabs.tts import ElevenLabsTTSService
-from pipecat.services.openai.tts import OpenAITTSService  # Fallback
+from pipecat.services.openai.tts import OpenAITTSService
 from pipecat.processors.aggregators.openai_llm_context import OpenAILLMContext
 from openai._types import NOT_GIVEN
 from pipecat.frames.frames import TextFrame
@@ -28,82 +28,61 @@ from pipecat.frames.frames import TextFrame
 # Cargar variables de entorno
 load_dotenv(override=True)
 
-def create_optimized_tts_service():
-    """Crea el servicio TTS optimizado con las voces reales de tu cuenta."""
+def create_ultra_fast_tts_service():
+    """Crea el servicio TTS ultra-optimizado para velocidad."""
     
     elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
     openai_api_key = os.getenv("OPENAI_API_KEY")
     
-    # Configuración optimizada basada en tu test
     if elevenlabs_api_key:
         try:
-            logger.info("🎙️ Configurando ElevenLabs TTS con ANDREA MEDELLIN COLOMBIA...")
+            logger.info("🚀 Configurando ElevenLabs ULTRA-RÁPIDO...")
             tts = ElevenLabsTTSService(
                 api_key=elevenlabs_api_key,
-                voice_id="qHkrJuifPpn95wK3rm2A",  # ANDREA MEDELLIN COLOMBIA - Tu voz real
-                model="eleven_turbo_v2_5",  # Modelo óptimo para tiempo real
-                language="es",  # Español
-                stability=0.6,  # Estabilidad optimizada para conversación
-                similarity_boost=0.85,  # Alta similaridad para naturalidad
-                style=0.2,  # Ligero estilo para conversación
-                use_speaker_boost=True,  # Activado para mayor claridad
-                output_format="pcm_8000",  # Formato optimizado para Twilio
-                optimize_streaming_latency=4,  # Máxima optimización para llamadas
+                voice_id="qHkrJuifPpn95wK3rm2A",  # ANDREA MEDELLIN COLOMBIA
+                model="eleven_flash_v2_5",  # MODELO MÁS RÁPIDO DISPONIBLE
+                language="es",
+                stability=0.4,  # Menor estabilidad = mayor velocidad
+                similarity_boost=0.75,  # Reducido para velocidad
+                style=0.0,  # Sin estilo para mayor velocidad
+                use_speaker_boost=False,  # Desactivado para velocidad
+                output_format="pcm_8000",
+                optimize_streaming_latency=4,  # Máxima optimización
             )
-            logger.info("✅ ElevenLabs TTS configurado con voz colombiana ANDREA")
-            return tts, "ElevenLabs-ANDREA"
+            logger.info("✅ ElevenLabs FLASH configurado para máxima velocidad")
+            return tts, "ElevenLabs-FLASH"
         except Exception as e:
-            logger.warning(f"⚠️ ElevenLabs falló, probando voz alternativa: {e}")
-            
-            # Fallback a la segunda voz en español (YoungEngineerCo - masculina)
-            try:
-                logger.info("🎙️ Probando con YoungEngineerCo (voz masculina)...")
-                tts = ElevenLabsTTSService(
-                    api_key=elevenlabs_api_key,
-                    voice_id="ucWwAruuGtBeHfnAaKcJ",  # YoungEngineerCo
-                    model="eleven_turbo_v2_5",
-                    language="es",
-                    stability=0.6,
-                    similarity_boost=0.85,
-                    style=0.2,
-                    use_speaker_boost=True,
-                    output_format="pcm_8000",
-                    optimize_streaming_latency=4,
-                )
-                logger.info("✅ ElevenLabs TTS configurado con YoungEngineerCo")
-                return tts, "ElevenLabs-YoungEngineerCo"
-            except Exception as e2:
-                logger.warning(f"⚠️ Segunda voz también falló: {e2}")
+            logger.warning(f"⚠️ ElevenLabs falló: {e}")
     
-    # Fallback final a OpenAI TTS
+    # Fallback ultrarrápido
     if openai_api_key:
         try:
-            logger.info("🎙️ Configurando OpenAI TTS como fallback...")
+            logger.info("🚀 Configurando OpenAI TTS ultrarrápido...")
             tts = OpenAITTSService(
                 api_key=openai_api_key,
-                voice="nova",  # Voz femenina clara
+                voice="nova",
                 model="tts-1",  # Modelo más rápido
                 language="es",
             )
-            logger.info("✅ OpenAI TTS configurado como fallback")
-            return tts, "OpenAI-Nova"
+            logger.info("✅ OpenAI TTS configurado")
+            return tts, "OpenAI-Flash"
         except Exception as e:
-            logger.error(f"❌ OpenAI TTS también falló: {e}")
+            logger.error(f"❌ OpenAI TTS falló: {e}")
     
-    raise ValueError("❌ No se pudo configurar ningún servicio TTS")
+    raise ValueError("❌ No se pudo configurar TTS")
 
 # ──────────────────────────────────────────
-# 1) PIPELINE PARA LLAMADAS DE VOZ (WebSocket)
+# 1) PIPELINE ULTRA-OPTIMIZADO
 # ──────────────────────────────────────────
 async def _voice_call(ws: WebSocket):
-    """Maneja la conexión Media Streams de Twilio - Groq Whisper + Groq LLM + ElevenLabs."""
-    logger.info("🎯 Iniciando pipeline de voz optimizado para Colombia...")
+    """Pipeline optimizado para máxima velocidad y adaptabilidad."""
+    logger.info("🚀 PIPELINE ULTRA-RÁPIDO iniciando...")
     
     try:
-        # ───── TWILIO HANDSHAKE (necesario para Media Streams) ─────
+        # ───── TWILIO HANDSHAKE ─────
         start_iter = ws.iter_text()
-        await start_iter.__anext__()  # handshake message
-        start_msg = await start_iter.__anext__()  # start message
+        await start_iter.__anext__()
+        start_msg = await start_iter.__anext__()
         start_data = json.loads(start_msg)
         
         stream_sid = start_data["start"]["streamSid"]
@@ -112,7 +91,7 @@ async def _voice_call(ws: WebSocket):
         logger.info(f"📞 CallSid: {call_sid}")
         logger.info(f"📞 StreamSid: {stream_sid}")
 
-        # ───── SERIALIZER CON DATOS DE TWILIO ─────
+        # ───── SERIALIZER ─────
         serializer = TwilioFrameSerializer(
             stream_sid=stream_sid,
             call_sid=call_sid,
@@ -121,19 +100,19 @@ async def _voice_call(ws: WebSocket):
         )
         logger.info("✅ Twilio serializer creado")
 
-        # ───── VAD OPTIMIZADO PARA ESPAÑOL COLOMBIANO ─────
+        # ───── VAD ULTRA-RÁPIDO ─────
         vad_analyzer = SileroVADAnalyzer(
             sample_rate=8000,
             params=VADParams(
-                confidence=0.4,      # Más sensible para captar acento colombiano
-                start_secs=0.2,      # Tiempo suficiente para procesar español
-                stop_secs=0.6,       # Pausa natural en conversación colombiana
-                min_volume=0.25      # Volumen mínimo optimizado
+                confidence=0.6,      # Más agresivo
+                start_secs=0.1,      # Respuesta inmediata
+                stop_secs=0.3,       # Mucho más rápido
+                min_volume=0.2       # Más sensible
             )
         )
-        logger.info("✅ Silero VAD optimizado para español colombiano")
+        logger.info("⚡ VAD ultra-rápido configurado")
 
-        # ───── TRANSPORT CON CONFIGURACIÓN OPTIMIZADA ─────
+        # ───── TRANSPORT OPTIMIZADO ─────
         transport = FastAPIWebsocketTransport(
             websocket=ws,
             params=FastAPIWebsocketParams(
@@ -146,100 +125,134 @@ async def _voice_call(ws: WebSocket):
                 audio_out_sample_rate=8000,
                 audio_in_channels=1,
                 audio_out_channels=1,
-                audio_out_enabled_timeout=35.0,  # Timeout extendido
+                audio_out_enabled_timeout=20.0,  # Timeout reducido
             ),
         )
-        logger.info("✅ Transport creado")
+        logger.info("✅ Transport optimizado")
 
-        # ───── GROQ WHISPER STT OPTIMIZADO ─────
+        # ───── GROQ STT RÁPIDO ─────
         stt = GroqSTTService(
             api_key=os.getenv("GROQ_API_KEY"),
             model="whisper-large-v3",
-            language="es",  # Español específico
-            temperature=0.1,  # Ligera temperatura para naturalidad
+            language="es",
+            temperature=0,  # Máxima precisión
         )
-        logger.info("✅ Groq Whisper STT optimizado para español")
+        logger.info("✅ Groq STT rápido")
         
-        # ───── GROQ LLM ─────
+        # ───── GROQ LLM OPTIMIZADO ─────
         llm = GroqLLMService(
             api_key=os.getenv("GROQ_API_KEY"), 
             model="llama-3.3-70b-versatile"
         )
-        logger.info("✅ Groq LLM creado")
+        logger.info("✅ Groq LLM optimizado")
         
-        # ───── TTS OPTIMIZADO CON TUS VOCES REALES ─────
-        tts, tts_provider = create_optimized_tts_service()
-        logger.info(f"✅ TTS configurado: {tts_provider}")
+        # ───── TTS ULTRA-RÁPIDO ─────
+        tts, tts_provider = create_ultra_fast_tts_service()
+        logger.info(f"🚀 TTS configurado: {tts_provider}")
 
-        # ───── CONTEXTO LLM OPTIMIZADO PARA COLOMBIA ─────
+        # ───── CONTEXTO ADAPTATIVO Y CONCISO ─────
         messages = [
             {
                 "role": "system",
-                "content": """Eres Laura, SDR (Sales Development Representative) de TDX, empresa colombiana de soluciones de IA conversacional y automatización. Tienes acento de Medellín, Colombia.
+                "content": """Guion de Llamada con Soluciones TDX
 
-PERSONALIDAD Y TONO COLOMBIANO:
-- Formal pero cálido, típico paisa profesional
-- Usa expresiones colombianas sutiles: "bacano", "chévere" ocasionalmente
-- Ritmo natural pausado, característico de Medellín
-- Escucha activa: refleja las ideas del prospecto
-- Máximo 2 oraciones por respuesta para mantener fluidez
-- Tono relajado y con mucha confianza paisa
+## *PERSONAJE: Freddy, SDR de TDX*
 
-OBJETIVO DE LA LLAMADA:
-1) Descubrir dolores críticos del líder de tecnología
-2) Mapearlos a las soluciones de TDX  
-3) Concretar reunión de exploración (20-30 min)
+*PERSONALIDAD Y TONO:*
+- *Consultor experto:* Formal-amigable, con la confianza de un par que entiende de tecnología y negocio.
+- *Ritmo pausado y natural:* Sin muletillas coloquiales excesivas ni groserías.
+- *Escucha activa:* Refleja las ideas del prospecto y conecta con lo que dice.
+- *Conciso:* Máximo 2 oraciones por respuesta para mantener la fluidez.
+- *Lenguaje orientado al beneficio:* Cada intervención se enfoca en el resultado que el líder obtiene.
 
-GUION A SEGUIR:
+*OBJETIVO DE LA LLAMADA:*
+1. Descubrir dolores críticos del líder de tecnología.
+2. Mapearlos a las soluciones de TDX.
+3. Concretar una reunión de exploración de 25 minutos.
 
-APERTURA (usar SOLO después de que el prospecto hable primero):
-"¡Muy buen día! Le habla Laura, de TDX acá en Medellín. ¿Cómo está?"
+---
 
-(esperar respuesta)
+### *GUION DE LA LLAMADA*
 
-INTRODUCCION:
-"Lo estoy contactando porque estamos ayudando a empresarios y líderes de tecnología a reducir en un treinta por ciento el tiempo que sus equipos dedican a tareas repetitivas y a acelerar la salida de prototipos. ¿Es un tema que está en su radar en este momento?"
+*APERTURA* (usar SOLO después de que el prospecto hable primero - "Hola", "Buenos días", etc.):
+"Buen día, le habla Freddy, de TDX. ¿Cómo está?"
 
-DESCUBRIMIENTO (usar estas preguntas según el flujo):
-- "Entendiendo ese desafío de las tareas repetitivas, ¿en qué procesos específicos su equipo de TI experimenta hoy más cuellos de botella por tickets o llamadas que les quitan foco?"
-- "Pensando en la agilidad, cuando necesitan lanzar un prototipo o MVP, ¿cuánto tiempo les toma hoy realmente sacarlo a producción y llevarlo al usuario final?"
-- "Hablando de eficiencia, ¿sus sistemas como CRM, ERP y canales como WhatsApp o voz conversan de forma fluida, o su equipo debe hacer muchos amarres manuales para que funcionen juntos?"
+(ESPERAR RESPUESTA Y RESPONDER CORTÉSMENTE)
 
-SOLUCIONES TDX (mapear directamente al dolor identificado):
-- Para cuellos de botella: "Justamente para liberar esa carga, TDX implementa AI Chatbot Multiagente o AI Voice Assistant; estas soluciones toman el ochenta por ciento de las interacciones repetitivas."
-- Para tareas repetitivas: "Para quitarse de encima esas labores que consumen tiempo valioso, utilizamos Flujos de Automatización y nuestro AgentOps Framework, optimizando procesos end-to-end."
-- Para agilidad: "Si el desafío es la agilidad, con MVP en quince días y nuestra oferta de SaaS Agentic, podemos acelerar significativamente la puesta en marcha de sus innovaciones."
-- Para integración: "Si la fricción está en la integración, nuestra Integración con CRM/ERP y el AI Assistant para WhatsApp permiten una conectividad perfecta."
+*INTRO:*
+"Qué bueno. El motivo de mi llamada es muy puntual: muchos líderes de tecnología nos comentan que sus equipos dedican casi un tercio de su tiempo a tareas repetitivas, en lugar de a innovar. De hecho, encontramos un método para devolverles ese tiempo para lo estratégico."
 
-CIERRE:
-"Dado que identificamos [mencionar el dolor principal], propongo una sesión de descubrimiento de veinticinco minutos. Allí podemos revisar a detalle sus flujos y le muestro un caso real de TDX, similar al suyo, donde logramos resultados bien chéveres. ¿Le cuadra este jueves a las diez de la mañana o prefiere el viernes?"
+---
 
-MANEJO DE SITUACIONES:
-- Si dice "No": hacer preguntas exploratorias alternativas
-- Si no entiendes: "No logré escucharlo bien, ¿me puede repetir por favor?"
-- Si hay silencio: hacer pregunta abierta para reactivar
-- Siempre mantener la conversación activa
+### *DESCUBRIMIENTO*
 
-INSTRUCCIONES CRÍTICAS:
-- ESPERAR siempre a que el usuario hable primero antes de usar la apertura
-- NO generar respuestas automáticas al conectarse
-- Responder SOLO cuando recibas input real del usuario
-- Seguir el guion paso a paso después de que el cliente hable
-- Escuchar 70%, hablar 30%
-- Siempre buscar agendar la reunión
-- Usar vocabulario colombiano profesional: "cuello de botella", "amarres", "quitarse de encima", "chévere", "bacano"
-- Respuestas máximo 2 oraciones para mantener fluidez
-- No incluir caracteres especiales en las respuestas
-- Ser adaptable y conversacional, mantener el flujo natural paisa"""
+(usar estas preguntas según el flujo, asintiendo y conectando con la respuesta del prospecto):
+
+- *Si el prospecto menciona desafíos con tareas repetitivas o carga de equipo:* "Eso que menciona es un reto muy frecuente, lo escucho constantemente en líderes de TI. Para entender mejor su caso, ¿dónde se están generando los *cuellos de botella* que más le quitan foco a su equipo hoy?"
+
+- *Si el prospecto habla de lentitud en proyectos o innovación:* "Totalmente de acuerdo, la velocidad para innovar es crucial hoy en día. Pensando en esa agilidad, ¿cuánto tiempo le está tomando a su equipo llevar un nuevo prototipo desde la idea hasta que el usuario final puede interactuar con él?"
+
+- *Si el prospecto menciona problemas de integración o manualidades:* "Claro, tener los sistemas hablando entre sí es la base para escalar sin fricción. A propósito de eso, ¿qué tantos *amarres manuales* tiene que hacer su equipo para que los canales como WhatsApp se entiendan con sus sistemas centrales como el ERP o CRM?"
+
+- *Si el prospecto menciona problemas de atención al cliente o disponibilidad 24/7:* "Entiendo, la atención continua es clave hoy. ¿Cómo manejan actualmente los picos de consultas o la necesidad de soporte fuera del horario de oficina?"
+
+---
+
+### *SOLUCIONES TDX*
+
+(mapear directamente al dolor identificado, conectando con la necesidad):
+
+- *Para cuellos de botella en soporte (general o digital):* "Justo para ese dolor, con nuestro *AI Chatbot Multiagente por web o WhatsApp, logramos que su equipo se libere de hasta el **ochenta por ciento* de esas consultas repetitivas. Así pueden dedicarse a lo que de verdad agrega valor."
+
+- *Para cuellos de botella en soporte telefónico:* "Para esos momentos donde la línea telefónica se congestiona, nuestro *AI Voice para llamadas telefónicas* puede gestionar de forma autónoma gran parte de esas interacciones. Esto significa una resolución más rápida para el cliente y menos carga para su equipo."
+
+- *Para tareas repetitivas (internas o cara a cliente):* "Entiendo, para *quitarse de encima* esas labores, nuestros *Flujos de Automatización* ejecutan esos procesos de forma autónoma. En la práctica, es devolverle horas muy valiosas a su gente para que innoven."
+
+- *Para la velocidad de lanzamiento de MVPs:* "Para acelerar esa salida a producción, empaquetamos la solución en nuestro formato de *MVP en quince días*. Es la forma más rápida de validar sus ideas directamente en el mercado."
+
+- *Para amarres manuales y sistemas desintegrados:* "Precisamente, para eliminar esa fricción, nuestras integraciones nativas con CRM y canales como WhatsApp logran que la información fluya sin reprocesos. Todo conversa de forma automática y natural."
+
+- *Para ofrecer atención visual y personalizada 24/7:* "Si su objetivo es dar una experiencia más inmersiva, nuestros *AI Avatar para llamadas en vivo* pueden interactuar con sus clientes en tiempo real, resolviendo dudas y guiando procesos. Esto libera a su equipo y ofrece atención de alto nivel en todo momento."
+
+- *Para atención al cliente en línea (web):* "Para una interacción más dinámica en su sitio web, nuestro *AI Voice asistente web* puede guiar a los usuarios a través de información compleja o procesos de compra. Esto mejora la experiencia del usuario y reduce la carga de consultas directas a su equipo."
+
+---
+
+### *CIERRE*
+
+"Perfecto, [Nombre del prospecto]. Con base en lo que me comenta sobre [mencionar el dolor principal del prospecto], le propongo algo muy concreto y práctico: tengamos una conversación de *veinticinco minutos* para mostrarle con datos cómo un cliente con un reto similar al suyo logró resultados tangibles. ¿Le queda bien este *jueves a las diez a.m.* o prefiere el *viernes a primera hora*?"
+
+---
+
+### *MANEJO DE SITUACIONES*
+
+- *Si el usuario dice "No" a las preguntas iniciales:* "Entiendo. ¿Y hay algún otro tema de eficiencia operativa o agilidad en proyectos que sea importante para usted en este momento?" o "Comprendo. ¿Quizás el tiempo que invierten en tareas de soporte repetitivas podría ser un área a mejorar?"
+- *Si no entiende una transcripción:* "Disculpe, no logré escucharlo bien, ¿podría repetir por favor?"
+- *Si hay silencio prolongado:* "Le pregunto esto porque he visto a muchos líderes con desafíos similares. ¿Hay algo que le genere inquietud en este tipo de soluciones?"
+- *Nunca quedarse completamente callado,* siempre mantener la conversación activa y consultiva.
+
+---
+
+*INSTRUCCIONES CRÍTICAS:*
+- ESPERAR siempre a que el usuario hable primero antes de usar la apertura.
+- NO generar respuestas automáticas al conectarse.
+- Responder SOLO cuando recibas input real del usuario.
+- Seguir el guion paso a paso después de que el cliente hable.
+- Escuchar 70%, hablar 30%.
+- Siempre buscar agendar la reunión.
+- Usar vocabulario formal-colombiano: "cuello de botella", "amarres", "quitarse de encima".
+- Respuestas máximo 2 oraciones para mantener fluidez.
+- No incluir caracteres especiales en las respuestas ya que se convertirán a audio.
+- Ser adaptable y conversacional, mantener el flujo natural"""
             }
         ]
         
-        # ───── CONTEXTO SIN MENSAJE INICIAL ─────
+        # ───── CONTEXTO ADAPTATIVO ─────
         context = OpenAILLMContext(messages)
         context_aggregator = llm.create_context_aggregator(context)
-        logger.info("✅ Contexto colombiano B2B creado")
+        logger.info("✅ Contexto adaptativo creado")
 
-        # ───── PIPELINE ─────
+        # ───── PIPELINE ULTRA-RÁPIDO ─────
         pipeline = Pipeline([
             transport.input(),
             stt,
@@ -249,9 +262,9 @@ INSTRUCCIONES CRÍTICAS:
             transport.output(),
             context_aggregator.assistant(),
         ])
-        logger.info("✅ Pipeline creado")
+        logger.info("⚡ Pipeline ultra-rápido creado")
 
-        # ───── TASK ─────
+        # ───── TASK OPTIMIZADO ─────
         task = PipelineTask(
             pipeline,
             params=PipelineParams(
@@ -263,7 +276,7 @@ INSTRUCCIONES CRÍTICAS:
             ),
         )
         
-        # ───── EVENTOS DE TRANSPORTE ─────        
+        # ───── EVENTOS ─────        
         @transport.event_handler("on_client_connected")
         async def on_client_connected(transport, client):
             logger.info(f"🔗 Cliente conectado: {client}")
@@ -273,39 +286,22 @@ INSTRUCCIONES CRÍTICAS:
             logger.info(f"👋 Cliente desconectado: {client}")
             await task.cancel()
 
-        # ───── EVENTOS DE DEBUGGING ─────
-        @transport.event_handler("on_audio_stream_started")
-        async def on_audio_stream_started(transport):
-            logger.info("🎵 Audio stream iniciado")
-
-        @transport.event_handler("on_audio_stream_stopped") 
-        async def on_audio_stream_stopped(transport):
-            logger.info("🔇 Audio stream detenido")
-
-        @tts.event_handler("on_tts_started")
-        async def on_tts_started(tts, text):
-            logger.info(f"🔊 TTS ANDREA iniciado: '{text[:50]}...'")
-
-        @tts.event_handler("on_tts_stopped")
-        async def on_tts_stopped(tts):
-            logger.info("🔇 TTS ANDREA finalizado")
-
-        # ───── EJECUTAR RUNNER ─────
-        logger.info(f"🚀 Iniciando pipeline con {tts_provider}...")
+        # ───── EJECUTAR ULTRA-RÁPIDO ─────
+        logger.info(f"🚀🚀 INICIANDO PIPELINE ULTRA-RÁPIDO con {tts_provider}...")
         runner = PipelineRunner(handle_sigint=False)
         await runner.run(task)
         logger.info("📞 Llamada finalizada")
         
     except Exception as e:
-        logger.exception(f"💥 Error en pipeline: {e}")
+        logger.exception(f"💥 Error: {e}")
         raise
 
 
 # ──────────────────────────────────────────
-# 2) PIPELINE SMS / WHATSAPP (webhook HTTP)
+# 2) SMS OPTIMIZADO
 # ──────────────────────────────────────────
 async def _sms(request: Request) -> Response:
-    """Maneja mensajes SMS/WhatsApp de Twilio - Groq LLM."""
+    """SMS ultra-conciso."""
     try:
         form = await request.form()
         user_msg = form.get("Body", "") or "..."
@@ -313,17 +309,15 @@ async def _sms(request: Request) -> Response:
         
         logger.info(f"💬 SMS de {from_number}: '{user_msg}'")
 
-        # Usar Groq Llama para respuesta de texto
         llm = GroqLLMService(
             api_key=os.getenv("GROQ_API_KEY"),
             model="llama-3.3-70b-versatile"
         )
         
-        # Contexto colombiano para SMS
         context = OpenAILLMContext([
             {
                 "role": "system", 
-                "content": "Eres Laura, SDR de TDX en Medellín, Colombia. Responde de forma concisa y profesional pero cálida, con toque paisa. Enfócate en agendar una reunión para mostrar nuestras soluciones de IA conversacional."
+                "content": "Eres Laura, SDR de TDX. Responde en máximo 1 oración, muy concisa. Objetivo: agendar reunión."
             },
             {
                 "role": "user",
@@ -331,42 +325,39 @@ async def _sms(request: Request) -> Response:
             }
         ])
         
-        # Generar respuesta
         response = await llm._process_context(context)
         reply = response.choices[0].message.content
         
-        logger.info(f"🤖 Respuesta SMS: '{reply}'")
+        logger.info(f"🤖 SMS conciso: '{reply}'")
 
-        # TwiML para responder
         twiml = f'<?xml version="1.0" encoding="UTF-8"?><Response><Message>{reply}</Message></Response>'
         return Response(content=twiml, media_type="text/xml")
         
     except Exception as e:
-        logger.exception(f"💥 Error en SMS: {e}")
-        error_twiml = '<?xml version="1.0" encoding="UTF-8"?><Response><Message>Error procesando mensaje</Message></Response>'
+        logger.exception(f"💥 Error SMS: {e}")
+        error_twiml = '<?xml version="1.0" encoding="UTF-8"?><Response><Message>Error</Message></Response>'
         return Response(content=error_twiml, media_type="text/xml")
 
 
 # ──────────────────────────────────────────
-# 3) HEALTH CHECK MEJORADO
+# 3) HEALTH CHECK ULTRA-OPTIMIZADO
 # ──────────────────────────────────────────
 async def health_check():
-    """Health check endpoint con información detallada."""
-    logger.info("🏥 Health check Pipeline TDX Medellín")
+    """Health check optimizado."""
+    logger.info("🏥 Health check ULTRA-RÁPIDO")
     
-    # Verificar TTS disponible
     tts_status = "unknown"
     try:
-        _, tts_provider = create_optimized_tts_service()
+        _, tts_provider = create_ultra_fast_tts_service()
         tts_status = tts_provider
     except Exception as e:
         tts_status = f"error: {str(e)}"
     
     return {
         "status": "healthy", 
-        "service": "TDX Sales Bot Laura - Medellín, Colombia",
-        "version": "2025-06-25-ANDREA-MEDELLIN",
-        "location": "Medellín, Antioquia, Colombia",
+        "service": "TDX Laura ULTRA-RÁPIDA",
+        "version": "2025-06-25-ULTRA-FAST",
+        "location": "Medellín, Colombia",
         "apis": {
             "groq": bool(os.getenv("GROQ_API_KEY")),
             "elevenlabs": bool(os.getenv("ELEVENLABS_API_KEY")),
@@ -374,34 +365,31 @@ async def health_check():
             "twilio": bool(os.getenv("TWILIO_ACCOUNT_SID")),
         },
         "services": {
-            "stt": "Groq Whisper Large V3 (Español)",
-            "llm": "Groq Llama 3.3 70B (Contexto Colombiano)", 
+            "stt": "Groq Whisper Ultra-Fast",
+            "llm": "Groq Llama 3.3 (Adaptativo)", 
             "tts": tts_status,
-            "voice": "ANDREA MEDELLIN COLOMBIA",
-            "purpose": "Sales Development Representative (SDR) - TDX"
+            "voice": "ANDREA MEDELLIN (Flash Mode)",
+            "purpose": "Ultra-Fast Adaptive SDR"
         },
         "optimization": {
-            "target_market": "Colombia",
-            "language": "Español Colombiano",
-            "accent": "Paisa (Medellín)",
-            "latency": "Optimizado para tiempo real"
+            "vad_speed": "Ultra-Fast (0.3s stop)",
+            "tts_model": "eleven_flash_v2_5",
+            "adaptability": "High (responde a feedback)",
+            "conciseness": "Máximo 1 oración por defecto"
         }
     }
 
 
 # ──────────────────────────────────────────
-# 4) PUNTO ÚNICO DE ENTRADA
+# 4) ENTRADA PRINCIPAL
 # ──────────────────────────────────────────
 async def bot(ctx):
-    """
-    Función principal para Sales Bot TDX Laura.
-    Optimizado para mercado colombiano.
-    """
+    """Bot ultra-optimizado y adaptativo."""
     if isinstance(ctx, WebSocket):
-        logger.info("📞 Llamada de ventas → Laura SDR TDX Medellín")
+        logger.info("🚀 LLAMADA ULTRA-RÁPIDA → Laura SDR TDX")
         await _voice_call(ctx)
     elif isinstance(ctx, Request):
-        logger.info("💬 Mensaje SMS/WhatsApp → Laura SDR")
+        logger.info("💬 SMS ultra-conciso → Laura SDR")
         return await _sms(ctx)
     else:
         logger.error(f"❌ Tipo no soportado: {type(ctx)}")
