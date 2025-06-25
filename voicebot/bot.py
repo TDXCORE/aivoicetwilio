@@ -42,8 +42,8 @@ def create_ultra_fast_tts_service():
                 voice_id="NMi2tSeXKgzc8siZ0yTx",  # ANDREA MEDELLIN COLOMBIA
                 model="eleven_flash_v2_5",  # MODELO MÁS RÁPIDO DISPONIBLE
                 language="es",
-                stability=0.4,  # Menor estabilidad = mayor velocidad
-                similarity_boost=0.60,  # Reducido para velocidad
+                stability=0.2,  # Menor estabilidad = mayor velocidad
+                similarity_boost=0.30,  # Reducido para velocidad
                 style=1,  # Sin estilo para mayor velocidad
                 use_speaker_boost=False,  # Desactivado para velocidad
                 output_format="pcm_8000",
