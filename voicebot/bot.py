@@ -39,7 +39,7 @@ def create_ultra_fast_tts_service():
             logger.info("🚀 Configurando ElevenLabs ULTRA-RÁPIDO...")
             tts = ElevenLabsTTSService(
                 api_key=elevenlabs_api_key,
-                voice_id="qHkrJuifPpn95wK3rm2A",  # ANDREA MEDELLIN COLOMBIA
+                voice_id="NMi2tSeXKgzc8siZ0yTx",  # ANDREA MEDELLIN COLOMBIA
                 model="eleven_flash_v2_5",  # MODELO MÁS RÁPIDO DISPONIBLE
                 language="es",
                 stability=0.2,  # Menor estabilidad = mayor velocidad
@@ -156,7 +156,7 @@ async def _voice_call(ws: WebSocket):
                 "role": "system",
                 "content": """Guion de Llamada con Soluciones TDX
 
-## *PERSONAJE: Laura, SDR de TDX*
+## *PERSONAJE: Freddy, SDR de TDX*
 
 *PERSONALIDAD Y TONO:*
 - *Consultor experto:* Formal-amigable, con la confianza de un par que entiende de tecnología y negocio.
@@ -175,7 +175,7 @@ async def _voice_call(ws: WebSocket):
 ### *GUION DE LA LLAMADA*
 
 *APERTURA* (usar SOLO después de que el prospecto hable primero - "Hola", "Buenos días", etc.):
-"Buen día, le habla Laura, de TDX. ¿Cómo está?"
+"Buen día, le habla Freddy, de TDX. ¿Cómo está?"
 
 (ESPERAR RESPUESTA Y RESPONDER CORTÉSMENTE)
 
@@ -316,8 +316,8 @@ async def _sms(request: Request) -> Response:
         
         context = OpenAILLMContext([
             {
-                "role": "system", 
-                "content": "Eres Laura, SDR de TDX. Responde en máximo 1 oración, muy concisa. Objetivo: agendar reunión."
+                "role": "system",
+                "content": "Eres Freddy, SDR de TDX. Responde en máximo 1 oración, muy concisa. Objetivo: agendar reunión."
             },
             {
                 "role": "user",
@@ -354,8 +354,8 @@ async def health_check():
         tts_status = f"error: {str(e)}"
     
     return {
-        "status": "healthy", 
-        "service": "TDX Laura ULTRA-RÁPIDA",
+        "status": "healthy",
+        "service": "TDX Freddy ULTRA-RÁPIDA",
         "version": "2025-06-25-ULTRA-FAST",
         "location": "Medellín, Colombia",
         "apis": {
@@ -386,10 +386,10 @@ async def health_check():
 async def bot(ctx):
     """Bot ultra-optimizado y adaptativo."""
     if isinstance(ctx, WebSocket):
-        logger.info("🚀 LLAMADA ULTRA-RÁPIDA → Laura SDR TDX")
+        logger.info("🚀 LLAMADA ULTRA-RÁPIDA → Freddy SDR TDX")
         await _voice_call(ctx)
     elif isinstance(ctx, Request):
-        logger.info("💬 SMS ultra-conciso → Laura SDR")
+        logger.info("💬 SMS ultra-conciso → Freddy SDR")
         return await _sms(ctx)
     else:
         logger.error(f"❌ Tipo no soportado: {type(ctx)}")
